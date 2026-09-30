@@ -17,7 +17,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   showDetail = false,
 }) => {
   return (
-    <div className="flex h-screen w-full bg-white overflow-hidden font-sans text-[14px]">
+    // h-dvh thay vì h-screen (100vh): trên trình duyệt di động, thanh địa chỉ
+    // tự ẩn/hiện khi cuộn khiến 100vh cao hơn phần màn hình thực sự nhìn thấy.
+    // Hệ quả là header của cuộc trò chuyện bị đẩy lên trên, ra ngoài vùng nhìn
+    // thấy khi cuộn — đây chính là lỗi "mất header khi cuộn trên điện thoại".
+    // h-dvh (dynamic viewport height) luôn khớp với chiều cao hiển thị thực tế.
+    <div className="flex h-dvh w-full bg-white overflow-hidden font-sans text-[14px]">
       {/* Primary sidebar — LUÔN hiện, tự chuyển thành bottom nav trên mobile
           (position: fixed bottom, xử lý bên trong SidebarPrimary) và left
           rail cố định trên desktop. Không theo showDetail nữa — giống cách

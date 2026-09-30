@@ -5,7 +5,16 @@ import {
 } from 'lucide-react';
 import { useCallSocket } from '../../hooks/useCallSocket';
 import type { CallType } from '../../hooks/useCallSocket';
+import { callService } from '../../services/callService';
 import toast from 'react-hot-toast';
+
+// Nếu không kết nối được sau chừng này thì coi như thất bại thay vì để màn
+// hình "Đang kết nối..." quay mãi. Đây là nguyên nhân của lỗi "gọi giữa hai
+// mạng khác nhau cứ quay rồi treo": khi chỉ có STUN mà không có TURN, hai máy
+// ở hai mạng khác nhau (ví dụ 2 nhà mạng 4G khác nhau) nhiều khi không thể tự
+// kết nối trực tiếp được, và trình duyệt không phải lúc nào cũng tự chuyển
+// trạng thái sang "failed" — nó có thể đứng ở "checking" vô thời hạn.
+const CONNECT_TIMEOUT_MS = 20_000;
 
 interface IncomingInfo {
   callId: string;
@@ -40,11 +49,16 @@ class RTCManager {
   private remoteDescSet = false;
   private onTrackCb: ((s: MediaStream) => void) | null = null;
 
+  // Danh sách STUN/TURN được nạp từ backend trước khi tạo peer connection —
+  // xem setIceServers(). Có một danh sách STUN mặc định phòng khi chưa nạp kịp.
   private iceServers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
   ];
+
+  setIceServers(servers: RTCIceServer[]) {
+    if (servers.length) this.iceServers = servers;
+  }
 
   async getStream(callType: CallType): Promise<MediaStream | null> {
     try {
@@ -63,7 +77,21 @@ class RTCManager {
     onTrack: (stream: MediaStream) => void,
     onStateChange: (state: RTCPeerConnectionState) => void,
   ): RTCPeerConnection {
-    this.pc = new RTCPeerConnection({ iceServers: this.iceServers });
+    // Cờ debug bật bằng tay trong console trình duyệt:
+    //   localStorage.setItem('ice_transport_policy', 'relay')
+    // để ép mọi kết nối đi qua TURN (không cho thử kết nối trực tiếp qua
+    // STUN nữa) — dùng khi cần xác định chắc chắn lỗi có phải do thiếu TURN
+    // hay không. Xoá key này (hoặc set về 'all') để quay lại bình thường.
+    let iceTransportPolicy: RTCIceTransportPolicy = 'all';
+    try {
+      if (window.localStorage.getItem('ice_transport_policy') === 'relay') {
+        iceTransportPolicy = 'relay';
+      }
+    } catch {
+      // localStorage có thể bị chặn (chế độ ẩn danh) — bỏ qua, dùng mặc định
+    }
+
+    this.pc = new RTCPeerConnection({ iceServers: this.iceServers, iceTransportPolicy });
 
     this.stream?.getTracks().forEach(t => this.pc!.addTrack(t, this.stream!));
 
@@ -169,6 +197,37 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
   const callIdRef     = useRef('');
   const remoteUserRef = useRef(outgoing?.calleId ?? incoming?.callerId ?? '');
   const phaseRef      = useRef<Phase>(outgoing ? 'calling' : 'incoming');
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tải danh sách STUN/TURN ngay khi modal mở — xong trước khi cần tạo peer
+  // connection (lúc bắt máy/nhận offer) nên không làm chậm thời điểm đó.
+  useEffect(() => {
+    callService.getIceServers().then((servers) => rtc.current.setIceServers(servers));
+  }, []);
+
+  const clearConnectTimeout = () => {
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+  };
+
+  // Bắt đầu đếm ngược khi vào trạng thái "connecting" — nếu WebRTC không bao
+  // giờ báo "failed" (một số trình duyệt/tình huống mạng không tự báo), hết
+  // giờ này thì tự coi là thất bại, dọn dẹp và đóng modal thay vì treo mãi.
+  const startConnectTimeout = () => {
+    clearConnectTimeout();
+    connectTimeoutRef.current = setTimeout(() => {
+      if (phaseRef.current !== 'connected') {
+        toast.error('Không thể kết nối cuộc gọi — vui lòng thử lại');
+        const cid = callIdRef.current;
+        if (cid) endCall(cid);
+        cleanup();
+        setPhaseSync('ended');
+        setTimeout(onClose, 1200);
+      }
+    }, CONNECT_TIMEOUT_MS);
+  };
 
   const setPhaseSync = (p: Phase) => { phaseRef.current = p; setPhase(p); };
 
@@ -204,6 +263,7 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
+    clearConnectTimeout();
     rtc.current.destroy();
   }, []);
 
@@ -226,9 +286,27 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
       if (phaseRef.current !== 'calling') return;
       callIdRef.current = cid;
       setPhaseSync('connecting');
+      startConnectTimeout();
+
+      // Chờ danh sách STUN/TURN nạp xong TRƯỚC khi tạo peer connection.
+      // Trước đây danh sách này chỉ được nạp "cho có" lúc mở modal (không
+      // chờ), nên nếu mạng chậm hoặc backend đang cold-start, bên gọi có
+      // thể tạo peer connection ngay khi callee bắt máy — tức là TRƯỚC khi
+      // danh sách TURN kịp tải về — và cuộc gọi rơi vào cảnh chỉ có STUN,
+      // dễ thất bại khi 2 máy ở 2 mạng khác nhau. await ở đây đảm bảo luôn
+      // dùng đúng danh sách đầy đủ, dù có phải chờ thêm một chút.
+      rtc.current.setIceServers(await callService.getIceServers());
 
       const stream = await rtc.current.getStream(callType);
-      if (!stream) { toast.error('Không thể truy cập micro/camera'); return; }
+      if (!stream) {
+        toast.error('Không thể truy cập micro/camera');
+        // Báo cho phía callee biết cuộc gọi không thể tiếp tục thay vì im
+        // lặng bỏ cuộc — nếu không, bên kia sẽ phải tự chờ hết 20 giây
+        // connect-timeout mới biết cuộc gọi thất bại.
+        endCall(cid);
+        cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1200);
+        return;
+      }
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
       rtc.current.createPeer(
@@ -239,6 +317,7 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
         },
         (state) => {
           if (state === 'connected') {
+            clearConnectTimeout();
             setPhaseSync('connected');
             startTimer();
             // Retry attach stream sau khi video element render
@@ -247,6 +326,7 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
             }, 100);
           }
           if (state === 'failed' || state === 'disconnected') {
+            clearConnectTimeout();
             toast.error('Kết nối bị ngắt');
             cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1500);
           }
@@ -284,9 +364,19 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
       callIdRef.current = cid;
       remoteUserRef.current = fromUserId;
       setPhaseSync('connecting');
+      startConnectTimeout();
+
+      // Xem chú thích ở onAccepted phía trên — cùng lý do phải chờ (await)
+      // danh sách ICE server trước khi tạo peer connection.
+      rtc.current.setIceServers(await callService.getIceServers());
 
       const stream = await rtc.current.getStream(callType);
-      if (!stream) { toast.error('Không thể truy cập micro/camera'); return; }
+      if (!stream) {
+        toast.error('Không thể truy cập micro/camera');
+        endCall(cid);
+        cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1200);
+        return;
+      }
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
       rtc.current.createPeer(
@@ -296,6 +386,7 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
         },
         (state) => {
           if (state === 'connected') {
+            clearConnectTimeout();
             setPhaseSync('connected');
             startTimer();
             setTimeout(() => {
@@ -303,6 +394,7 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
             }, 100);
           }
           if (state === 'failed' || state === 'disconnected') {
+            clearConnectTimeout();
             toast.error('Kết nối bị ngắt');
             cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1500);
           }
@@ -400,33 +492,50 @@ const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) =>
 
         <div className="relative z-10 flex flex-col items-center px-6 pt-12 pb-8 min-h-[420px]">
 
-          {/* Avatar + ripple */}
-          <div className="relative mb-4">
-            {displayAvatar ? (
-              <img src={displayAvatar} alt={displayName}
-                className="w-24 h-24 rounded-full object-cover border-4 border-white/20 shadow-xl" />
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl font-bold shadow-xl border-4 border-white/20">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            {(phase === 'calling' || phase === 'incoming') && (
-              <>
-                <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping" />
-                <div className="absolute -inset-3 rounded-full border border-white/15 animate-ping [animation-delay:300ms]" />
-              </>
-            )}
-          </div>
+          {/* Avatar lớn — chỉ hiện khi CHƯA có video để nhìn (gọi thoại, hoặc
+              gọi video nhưng chưa kết nối). Khi video đã kết nối, khuôn mặt
+              thật đã hiện trên toàn màn hình rồi nên avatar tròn không cần
+              nữa — trước đây avatar này vẫn hiện đè lên giữa video, che mất
+              một phần khuôn mặt người gọi và góc video nhỏ (PIP). */}
+          {!(callType === 'video' && phase === 'connected') && (
+            <div className="relative mb-4">
+              {displayAvatar ? (
+                <img src={displayAvatar} alt={displayName}
+                  className="w-24 h-24 rounded-full object-cover border-4 border-white/20 shadow-xl" />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl font-bold shadow-xl border-4 border-white/20">
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+              )}
+              {(phase === 'calling' || phase === 'incoming') && (
+                <>
+                  <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping" />
+                  <div className="absolute -inset-3 rounded-full border border-white/15 animate-ping [animation-delay:300ms]" />
+                </>
+              )}
+            </div>
+          )}
 
-          <h2 className="text-xl font-bold mb-1">{displayName}</h2>
-          <p className="text-sm text-white/60 mb-2 flex items-center gap-1.5">
-            {callType === 'video' ? <Video size={14} /> : <Phone size={14} />}
-            {phaseLabel[phase]}
-            {phase === 'connecting' && <Loader2 size={14} className="animate-spin ml-1" />}
-          </p>
+          {/* Khi video đã kết nối: thay avatar to bằng 1 thanh nhãn nhỏ ở góc
+              trên bên trái, không che khuôn mặt trong video */}
+          {callType === 'video' && phase === 'connected' ? (
+            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1.5 flex items-center gap-1.5">
+              <span className="text-sm font-semibold">{displayName}</span>
+              <span className="text-xs text-white/70">{phaseLabel[phase]}</span>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-xl font-bold mb-1">{displayName}</h2>
+              <p className="text-sm text-white/60 mb-2 flex items-center gap-1.5">
+                {callType === 'video' ? <Video size={14} /> : <Phone size={14} />}
+                {phaseLabel[phase]}
+                {phase === 'connecting' && <Loader2 size={14} className="animate-spin ml-1" />}
+              </p>
+            </>
+          )}
 
           {callType === 'video' && phase === 'connected' && (
-            <div className="absolute top-4 right-4 w-24 h-32 rounded-xl overflow-hidden border-2 border-white/20 shadow-lg bg-black">
+            <div className="absolute bottom-28 right-4 w-24 h-32 rounded-xl overflow-hidden border-2 border-white/20 shadow-lg bg-black z-20">
               <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             </div>
           )}

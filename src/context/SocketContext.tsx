@@ -55,19 +55,36 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     const token = localStorage.getItem('accessToken');
     const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000';
 
+    // Cho phép bắt đầu bằng polling rồi nâng cấp lên websocket (mặc định của
+    // Engine.IO), thay vì ép chỉ dùng websocket. Backend chạy trên Render free
+    // tier có thể "ngủ" và mất 30-60 giây để khởi động lại (cold start) — khi
+    // ép chỉ dùng websocket, lần kết nối đầu tiên trong lúc server đang khởi
+    // động rất dễ bị đóng giữa chừng (cảnh báo vàng trong devtools), nhưng
+    // polling vẫn hoạt động bình thường trong lúc chờ rồi mới nâng cấp lên
+    // websocket. reconnection với thời gian chờ tăng dần giúp tự kết nối lại
+    // mà không cần người dùng phải tự tải lại trang.
     const newSocket = io(SOCKET_URL, {
       auth: { token },
       withCredentials: true,
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected:', newSocket.id);
       setIsConnected(true);
     });
 
     newSocket.on('disconnect', () => {
-      console.log('Socket disconnected');
+      setIsConnected(false);
+    });
+
+    // Không throw ra ngoài, chỉ cập nhật trạng thái — UI dựa vào isConnected
+    // để hiện chỉ báo "đang kết nối lại" thay vì im lặng treo.
+    newSocket.on('connect_error', () => {
       setIsConnected(false);
     });
 

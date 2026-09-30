@@ -1,9 +1,23 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { PhoneOff, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, Users } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Volume2, VolumeX, Users } from 'lucide-react';
 import { useGroupCallSocket } from '../../hooks/useGroupCallSocket';
-import type { CallType } from '../../hooks/useCallSocket';
+import { callService } from '../../services/callService';
 import Avatar from '../ui/Avatar';
 import toast from 'react-hot-toast';
+
+// Gọi nhóm chỉ hỗ trợ THOẠI (không có camera).
+//
+// Gọi video nhóm cần mỗi người gửi luồng video trực tiếp cho TẤT CẢ người
+// còn lại (mô hình "mesh" — n người thì mỗi người mở n-1 kết nối video).
+// Với server miễn phí và nhiều người dùng cùng lúc, việc này rất nặng, dễ
+// làm treo trình duyệt và rớt kết nối. Voice-only vẫn dùng mesh nhưng nhẹ
+// hơn nhiều lần vì không phải mã hoá/giải mã video.
+const CALL_TYPE = 'voice' as const;
+
+// Một peer không kết nối được sau chừng này thì coi như thất bại và dọn dẹp,
+// tránh treo mãi ở trạng thái "kết nối..." khi hai máy ở hai mạng khác nhau
+// không tự bắt được nhau qua STUN.
+const PEER_CONNECT_TIMEOUT_MS = 20_000;
 
 // ─── PeerConnection wrapper ───────────────────────────────────────────────────
 class PeerConn {
@@ -13,16 +27,22 @@ class PeerConn {
 
   constructor(
     stream: MediaStream,
+    iceServers: RTCIceServer[],
     onIce: (c: RTCIceCandidateInit) => void,
     onTrack: (s: MediaStream) => void,
     onState: (s: RTCPeerConnectionState) => void,
   ) {
-    this.pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
-    });
+    // Cùng cờ debug với CallModal.tsx — xem chú thích ở đó.
+    let iceTransportPolicy: RTCIceTransportPolicy = 'all';
+    try {
+      if (window.localStorage.getItem('ice_transport_policy') === 'relay') {
+        iceTransportPolicy = 'relay';
+      }
+    } catch {
+      // bỏ qua nếu localStorage bị chặn
+    }
+
+    this.pc = new RTCPeerConnection({ iceServers, iceTransportPolicy });
     stream.getTracks().forEach(t => this.pc.addTrack(t, stream));
     this.pc.onicecandidate = e => { if (e.candidate) onIce(e.candidate.toJSON()); };
     this.pc.ontrack = e => { if (e.streams?.[0]) onTrack(e.streams[0]); };
@@ -64,7 +84,6 @@ interface ParticipantState {
   userId: string;
   name: string;
   avatar?: string;
-  stream?: MediaStream;
   connected: boolean;
 }
 
@@ -73,80 +92,43 @@ interface GroupCallModalProps {
   conversationName: string;
   currentUserId: string;
   currentUserName: string;
-  incoming?: { callId: string; hostId: string; callType: CallType };
-  outgoing?: { callType: CallType };
+  incoming?: { callId: string; hostId: string; callType?: string };
+  outgoing?: { callType?: string };
   onClose: () => void;
 }
 
-// ─── Video tile ───────────────────────────────────────────────────────────────
-const VideoTile = React.memo(({ participant, callType }: {
-  participant: ParticipantState;
-  callType: CallType;
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (videoRef.current && participant.stream) {
-      videoRef.current.srcObject = participant.stream;
-    }
-  }, [participant.stream]);
-
-  return (
-    <div className="relative rounded-xl overflow-hidden bg-gray-800 flex items-center justify-center aspect-video min-h-[120px]">
-      {callType === 'video' && participant.stream ? (
-        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-      ) : (
-        <div className="flex flex-col items-center gap-2 py-4">
-          <Avatar name={participant.name} size="lg" />
-          <span className="text-white text-xs font-medium">{participant.name}</span>
-        </div>
-      )}
-      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-        <span className="bg-black/70 backdrop-blur-sm rounded-md px-2 py-1 text-white text-[11px] font-semibold shadow-sm truncate max-w-[80%]">
-          {participant.name}
-        </span>
-        {!participant.connected && (
-          <span className="bg-yellow-500/70 rounded px-1 py-0.5 text-white text-[9px]">kết nối...</span>
-        )}
-      </div>
+// ─── Participant tile — luôn hiện avatar vì gọi nhóm chỉ có thoại ─────────────
+const ParticipantTile = React.memo(({ participant }: { participant: ParticipantState }) => (
+  <div className="relative rounded-xl overflow-hidden bg-gray-800 flex items-center justify-center aspect-video min-h-[120px]">
+    <div className="flex flex-col items-center gap-2 py-4">
+      <Avatar name={participant.name} size="lg" />
+      <span className="text-white text-xs font-medium">{participant.name}</span>
     </div>
-  );
-});
-
-// ─── Local tile ───────────────────────────────────────────────────────────────
-const LocalTile = React.memo(({ name, callType, streamRef, isMuted }: {
-  name: string;
-  callType: CallType;
-  streamRef: React.RefObject<MediaStream | null>;
-  isMuted: boolean;
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-    }
-  }, [streamRef]);
-
-  return (
-    <div className="relative rounded-xl overflow-hidden bg-gray-700 flex items-center justify-center aspect-video min-h-[120px]">
-      {callType === 'video' ? (
-        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-      ) : (
-        <div className="flex flex-col items-center gap-2 py-4">
-          <Avatar name={name} size="lg" />
-          <span className="text-white text-xs font-medium">{name} (Bạn)</span>
-        </div>
+    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+      <span className="bg-black/70 backdrop-blur-sm rounded-md px-2 py-1 text-white text-[11px] font-semibold shadow-sm truncate max-w-[80%]">
+        {participant.name}
+      </span>
+      {!participant.connected && (
+        <span className="bg-yellow-500/70 rounded px-1 py-0.5 text-white text-[9px]">kết nối...</span>
       )}
-      <div className="absolute bottom-2 left-2 flex items-center gap-1">
-        <span className="bg-black/70 backdrop-blur-sm rounded-md px-2 py-1 text-white text-[11px] font-semibold shadow-sm">
-          {name} (Bạn)
-        </span>
-        {isMuted && <span className="text-red-400 text-[10px]">🔇</span>}
-      </div>
     </div>
-  );
-});
+  </div>
+));
+
+const LocalTile = React.memo(({ name, isMuted }: { name: string; isMuted: boolean }) => (
+  <div className="relative rounded-xl overflow-hidden bg-gray-700 flex items-center justify-center aspect-video min-h-[120px]">
+    <div className="flex flex-col items-center gap-2 py-4">
+      <Avatar name={name} size="lg" />
+      <span className="text-white text-xs font-medium">{name} (Bạn)</span>
+    </div>
+    <div className="absolute bottom-2 left-2 flex items-center gap-1">
+      <span className="bg-black/70 backdrop-blur-sm rounded-md px-2 py-1 text-white text-[11px] font-semibold shadow-sm">
+        {name} (Bạn)
+      </span>
+      {isMuted && <MicOff size={11} className="text-red-400" />}
+    </div>
+  </div>
+));
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const GroupCallModal: React.FC<GroupCallModalProps> = ({
@@ -162,21 +144,21 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
   const [isHost, setIsHost] = useState(!!outgoing || incoming?.hostId === currentUserId);
 
   const [callId, setCallId]       = useState(incoming?.callId ?? '');
-  const [callType]                = useState<CallType>(incoming?.callType ?? outgoing?.callType ?? 'voice');
   const [phase, setPhase]         = useState<'waiting' | 'active' | 'ended'>(incoming ? 'waiting' : 'active');
   const [participants, setParticipants] = useState<ParticipantState[]>([]);
   const [isMuted, setIsMuted]     = useState(false);
-  const [isCamOff, setIsCamOff]   = useState(false);
   const [isSpeakerOff, setIsSpeakerOff] = useState(false);
   const [duration, setDuration]   = useState(0);
 
   // Refs để tránh stale closure trong socket callbacks
-  const callIdRef    = useRef(incoming?.callId ?? '');
-  const phaseRef     = useRef<'waiting' | 'active' | 'ended'>(incoming ? 'waiting' : 'active');
-  const localStream  = useRef<MediaStream | null>(null);
-  const peers        = useRef<Map<string, PeerConn>>(new Map());
-  const audioEls     = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callIdRef      = useRef(incoming?.callId ?? '');
+  const phaseRef        = useRef<'waiting' | 'active' | 'ended'>(incoming ? 'waiting' : 'active');
+  const localStream     = useRef<MediaStream | null>(null);
+  const iceServersRef   = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }]);
+  const peers           = useRef<Map<string, PeerConn>>(new Map());
+  const audioEls        = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const peerTimeouts    = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const timerRef        = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const setCallIdSync = (id: string) => { callIdRef.current = id; setCallId(id); };
   const setPhaseSync  = (p: typeof phase) => { phaseRef.current = p; setPhase(p); };
@@ -184,9 +166,30 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
   const formatDur = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
+  // ─── Peer connect timeout — tránh một người mãi kẹt ở "kết nối..." ─────────
+  const clearPeerTimeout = (userId: string) => {
+    const t = peerTimeouts.current.get(userId);
+    if (t) { clearTimeout(t); peerTimeouts.current.delete(userId); }
+  };
+
+  const startPeerTimeout = (userId: string) => {
+    clearPeerTimeout(userId);
+    const t = setTimeout(() => {
+      peerTimeouts.current.delete(userId);
+      peers.current.get(userId)?.destroy();
+      peers.current.delete(userId);
+      setParticipants(prev => prev.map(p =>
+        p.userId === userId ? { ...p, connected: false } : p
+      ));
+    }, PEER_CONNECT_TIMEOUT_MS);
+    peerTimeouts.current.set(userId, t);
+  };
+
   // ─── Cleanup ─────────────────────────────────────────────────────────────
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
+    peerTimeouts.current.forEach(t => clearTimeout(t));
+    peerTimeouts.current.clear();
     localStream.current?.getTracks().forEach(t => t.stop());
     localStream.current = null;
     peers.current.forEach(p => p.destroy());
@@ -197,35 +200,34 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
 
   useEffect(() => () => cleanup(), [cleanup]);
 
-  // ─── Get media stream ─────────────────────────────────────────────────────
+  // ─── Get media stream — chỉ audio, gọi nhóm không dùng camera ─────────────
   const getStream = useCallback(async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: callType === 'video',
-      });
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStream.current = s;
       return s;
     } catch {
-      toast.error('Không thể truy cập micro/camera');
+      toast.error('Không thể truy cập micro');
       return null;
     }
-  }, [callType]);
+  }, []);
 
   // ─── Create peer ──────────────────────────────────────────────────────────
   const createPeer = useCallback((targetId: string): PeerConn | null => {
     if (!localStream.current) return null;
     if (peers.current.has(targetId)) return peers.current.get(targetId)!;
 
+    startPeerTimeout(targetId);
+
     const peer = new PeerConn(
       localStream.current,
+      iceServersRef.current,
       (c) => sendIceCandidate(callIdRef.current, targetId, c),
       (stream) => {
-        // Cập nhật state participant với stream mới
+        clearPeerTimeout(targetId);
         setParticipants(prev => prev.map(p =>
-          p.userId === targetId ? { ...p, stream, connected: true } : p
+          p.userId === targetId ? { ...p, connected: true } : p
         ));
-        // Audio
         if (!audioEls.current.has(targetId)) {
           const audio = new Audio();
           audio.autoplay = true;
@@ -237,12 +239,13 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
       },
       (state) => {
         if (state === 'connected') {
+          clearPeerTimeout(targetId);
           setParticipants(prev => prev.map(p =>
             p.userId === targetId ? { ...p, connected: true } : p
           ));
         }
         if (state === 'failed') {
-          // Thử reconnect
+          clearPeerTimeout(targetId);
           peers.current.get(targetId)?.destroy();
           peers.current.delete(targetId);
         }
@@ -297,6 +300,7 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
     },
 
     onLeft: ({ userId }) => {
+      clearPeerTimeout(userId);
       setParticipants(prev => prev.filter(p => p.userId !== userId));
       peers.current.get(userId)?.destroy();
       peers.current.delete(userId);
@@ -369,11 +373,14 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
   // ─── Mount ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
+      // Nạp danh sách STUN/TURN trước khi tạo peer connection đầu tiên
+      iceServersRef.current = await callService.getIceServers();
+
       const stream = await getStream();
       if (!stream) { onClose(); return; }
 
       if (outgoing) {
-        startGroupCall(conversationId, callType);
+        startGroupCall(conversationId, CALL_TYPE);
         setPhaseSync('active');
         startTimer();
       }
@@ -406,10 +413,6 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
     localStream.current?.getAudioTracks().forEach(t => { t.enabled = isMuted; });
     setIsMuted(m => !m);
   };
-  const toggleCam = () => {
-    localStream.current?.getVideoTracks().forEach(t => { t.enabled = isCamOff; });
-    setIsCamOff(c => !c);
-  };
   const toggleSpeaker = () => {
     audioEls.current.forEach(a => { a.muted = !isSpeakerOff; });
     setIsSpeakerOff(s => !s);
@@ -440,32 +443,21 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
               )}
             </p>
           </div>
-          <div className="flex items-center gap-1.5">
-            {callType === 'video' && (
-              <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold">VIDEO</span>
-            )}
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-              phase === 'waiting' ? 'bg-yellow-500/20 text-yellow-300' :
-              phase === 'active'  ? 'bg-green-500/20 text-green-300' :
-              'bg-white/10 text-white/50'
-            }`}>
-              {phase === 'waiting' ? 'Đang chờ' : phase === 'active' ? 'Đang gọi' : 'Kết thúc'}
-            </span>
-          </div>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+            phase === 'waiting' ? 'bg-yellow-500/20 text-yellow-300' :
+            phase === 'active'  ? 'bg-green-500/20 text-green-300' :
+            'bg-white/10 text-white/50'
+          }`}>
+            {phase === 'waiting' ? 'Đang chờ' : phase === 'active' ? 'Đang gọi' : 'Kết thúc'}
+          </span>
         </div>
 
-        {/* Video grid — chỉ render khi call đang active, tránh camera bị "đứng hình"
-            hiển thị frame cuối cùng sau khi call đã kết thúc */}
+        {/* Grid người tham gia — chỉ render khi call đang active */}
         {phase !== 'ended' ? (
           <div className={`flex-1 overflow-y-auto p-3 grid ${gridCols} gap-2`}>
-            <LocalTile
-              name={currentUserName}
-              callType={callType}
-              streamRef={localStream}
-              isMuted={isMuted}
-            />
+            <LocalTile name={currentUserName} isMuted={isMuted} />
             {participants.map(p => (
-              <VideoTile key={p.userId} participant={p} callType={callType} />
+              <ParticipantTile key={p.userId} participant={p} />
             ))}
           </div>
         ) : (
@@ -485,7 +477,7 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
             <div className="flex items-center justify-center gap-8">
               <div className="flex flex-col items-center gap-1.5">
                 <button onClick={handleLeave}
-                  className="w-13 h-13 w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all active:scale-95 shadow-lg">
+                  className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all active:scale-95 shadow-lg">
                   <PhoneOff size={20} />
                 </button>
                 <span className="text-[11px] text-white/50">Bỏ qua</span>
@@ -515,13 +507,6 @@ const GroupCallModal: React.FC<GroupCallModalProps> = ({
                   title={isSpeakerOff ? 'Bật loa' : 'Tắt loa'}>
                   {isSpeakerOff ? <VolumeX size={17} /> : <Volume2 size={17} />}
                 </button>
-                {callType === 'video' && (
-                  <button onClick={toggleCam}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isCamOff ? 'bg-red-500/80' : 'bg-white/15 hover:bg-white/25'}`}
-                    title={isCamOff ? 'Bật camera' : 'Tắt camera'}>
-                    {isCamOff ? <VideoOff size={17} /> : <Video size={17} />}
-                  </button>
-                )}
               </div>
 
               {/* Actions bên phải — tùy role */}

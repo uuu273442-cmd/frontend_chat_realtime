@@ -1120,24 +1120,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                             </button>
                         </>
                     )}
-                    {/* Group chat: gọi nhóm */}
+                    {/* Group chat: chỉ hỗ trợ gọi thoại (xem ghi chú ở GroupCallModal.tsx
+                        và backend/gateway về lý do không có gọi video nhóm) */}
                     {isGroupChat && (
-                        <>
-                            <button
-                                onClick={() => onStartGroupCall?.('voice')}
-                                className="p-2 text-gray-500 hover:bg-green-100 hover:text-green-600 rounded-full transition-colors"
-                                title="Gọi thoại nhóm"
-                            >
-                                <Phone size={18} />
-                            </button>
-                            <button
-                                onClick={() => onStartGroupCall?.('video')}
-                                className="p-2 text-gray-500 hover:bg-blue-100 hover:text-blue-600 rounded-full transition-colors"
-                                title="Gọi video nhóm"
-                            >
-                                <Video size={18} />
-                            </button>
-                        </>
+                        <button
+                            onClick={() => onStartGroupCall?.('voice')}
+                            className="p-2 text-gray-500 hover:bg-green-100 hover:text-green-600 rounded-full transition-colors"
+                            title="Gọi thoại nhóm"
+                        >
+                            <Phone size={18} />
+                        </button>
                     )}
                     <div className="w-px h-5 bg-gray-200 mx-1" />
                     <button

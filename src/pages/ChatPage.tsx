@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { useParams, useLocation, useNavigate, Outlet } from "react-router-dom";
 import { conversationService } from "../services/conversationService";
 import { userService } from "../services/userService";
@@ -6,8 +6,6 @@ import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import SettingsModal from "../components/chat/SettingsModal";
 import SidebarPrimary from "../components/chat/SidebarPrimary";
-import CallModal from "../components/chat/CallModal";
-import GroupCallModal from "../components/chat/GroupCallModal";
 import { useGroupCallSocket } from "../hooks/useGroupCallSocket";
 import { useCallSocket } from "../hooks/useCallSocket";
 import type { CallType } from "../hooks/useCallSocket";
@@ -20,6 +18,13 @@ import { useFriendSocket } from "../hooks/useFriendSocket";
 import { useGlobalNotifications } from "../hooks/useGlobalNotifications";
 import { useSocket } from "../context/SocketContext";
 import { friendService } from "../services/friendService";
+
+// Tải CallModal/GroupCallModal theo yêu cầu (lazy) thay vì gộp luôn vào bundle
+// chính. Hai màn hình này khá nặng (logic WebRTC, nhiều icon) nhưng phần lớn
+// người dùng trong một phiên có thể không gọi cuộc nào — tách riêng giúp
+// trang chat tải nhanh hơn lúc mới đăng nhập, nhất là trên mạng di động.
+const CallModal = lazy(() => import("../components/chat/CallModal"));
+const GroupCallModal = lazy(() => import("../components/chat/GroupCallModal"));
 
 const ChatPage: React.FC = () => {
     const { logout, user } = useAuth();
@@ -429,26 +434,31 @@ const ChatPage: React.FC = () => {
             />
         )}
 
-        {/* 1-1 Call Modal */}
+        {/* 1-1 Call Modal — bọc Suspense vì CallModal được tải lazy, fallback
+            null vì modal chỉ xuất hiện trong chớp mắt lúc tải lần đầu */}
         {callModal !== null && (
-            <CallModal
-                outgoing={callModal.outgoing}
-                incoming={callModal.incoming}
-                onClose={() => setCallModal(null)}
-            />
+            <Suspense fallback={null}>
+                <CallModal
+                    outgoing={callModal.outgoing}
+                    incoming={callModal.incoming}
+                    onClose={() => setCallModal(null)}
+                />
+            </Suspense>
         )}
 
         {/* Group Call Modal */}
         {groupCallModal !== null && (
-            <GroupCallModal
-                conversationId={groupCallModal.conversationId}
-                conversationName={groupCallModal.conversationName}
-                currentUserId={user?.sub ?? ''}
-                currentUserName={user?.name ?? 'Bạn'}
-                incoming={groupCallModal.incoming}
-                outgoing={groupCallModal.outgoing}
-                onClose={() => setGroupCallModal(null)}
-            />
+            <Suspense fallback={null}>
+                <GroupCallModal
+                    conversationId={groupCallModal.conversationId}
+                    conversationName={groupCallModal.conversationName}
+                    currentUserId={user?.sub ?? ''}
+                    currentUserName={user?.name ?? 'Bạn'}
+                    incoming={groupCallModal.incoming}
+                    outgoing={groupCallModal.outgoing}
+                    onClose={() => setGroupCallModal(null)}
+                />
+            </Suspense>
         )}
         </>
     );

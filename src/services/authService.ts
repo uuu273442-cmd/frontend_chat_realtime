@@ -1,7 +1,16 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+// Toàn bộ route backend đều có tiền tố "/api" (app.setGlobalPrefix("api")
+// ở main.ts), nên VITE_API_URL bắt buộc phải kết thúc bằng "/api". Nếu ai
+// đó cấu hình thiếu (ví dụ đặt VITE_API_URL=https://backend.onrender.com
+// thay vì https://backend.onrender.com/api trên Vercel), MỌI request REST
+// sẽ bị 404 — tự thêm "/api" vào đây để lỡ cấu hình sai cũng không làm sập
+// toàn bộ app.
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = rawApiUrl.replace(/\/+$/, '').endsWith('/api')
+  ? rawApiUrl.replace(/\/+$/, '')
+  : `${rawApiUrl.replace(/\/+$/, '')}/api`;
 
 const api = axios.create({
   baseURL: API_URL,

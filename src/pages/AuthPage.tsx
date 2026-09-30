@@ -9,7 +9,9 @@ const AuthPage: React.FC = () => {
   const handleToggle = () => setIsLogin(!isLogin);
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#f0f2f5] p-4 relative overflow-hidden font-sans">
+    // min-h-dvh thay vì min-h-screen — tránh cùng lỗi chiều cao 100vh trên di động
+    // (xem chú thích trong ChatLayout.tsx)
+    <div className="min-h-dvh w-full flex items-center justify-center bg-[#f0f2f5] p-4 relative overflow-hidden font-sans">
       {/* Dynamic Background Blurs */}
       <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-5%] w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
