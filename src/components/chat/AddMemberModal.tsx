@@ -36,7 +36,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
         (participants || []).map((p: any) => p.userId?._id || p.userId),
     );
 
-    // Load friends
+    // load friends
     useEffect(() => {
         const loadFriends = async () => {
             try {
@@ -54,7 +54,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
         loadFriends();
     }, [participants]);
 
-    // Load pending requests
+    // load pending requests
     const loadPendingRequests = async () => {
         setIsPendingLoading(true);
         try {
@@ -108,7 +108,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
             const message = error?.response?.data?.message;
 
             if (status === 409) {
-                // Duplicate pending request
+                // duplicate pending request
                 toast.error("Yêu cầu đã được gửi trước đó và đang chờ duyệt!");
             } else {
                 toast.error(message || "Không thể thêm thành viên");
@@ -126,7 +126,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
             maxWidth="max-w-[480px]"
         >
             <div className="p-6">
-                {/* Tabs */}
+                {/* tabs */}
                 <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1">
                     <button
                         onClick={() => setTab("add")}
@@ -155,7 +155,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
                     </button>
                 </div>
 
-                {/* Tab: Thêm mới */}
+                {/* tab: Thêm mới */}
                 {tab === "add" && (
                     <>
                         <div className="mb-4">
@@ -253,7 +253,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({
                     </>
                 )}
 
-                {/* Tab: Chờ duyệt */}
+                {/* tab: Chờ duyệt */}
                 {tab === "pending" && (
                     <div className="min-h-[280px]">
                         {isPendingLoading ? (

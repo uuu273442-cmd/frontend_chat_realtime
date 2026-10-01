@@ -2,7 +2,7 @@ import api from './authService';
 import type { Conversation, User } from '../types';
 
 export const conversationService = {
-  // Private & Group Creation
+  // private & Group Creation
   async createPrivateConversation(userId: string): Promise<Conversation> {
     const response = await api.post('/conversations/private', { userId });
     return response.data;
@@ -13,7 +13,7 @@ export const conversationService = {
     return response.data;
   },
 
-  // Conversation Information
+  // conversation Information
   async getConversationInfo(id: string): Promise<Conversation> {
     const response = await api.get(`/conversations/${id}/info`);
     return response.data;
@@ -34,7 +34,7 @@ export const conversationService = {
     return response.data;
   },
 
-  // List & Search
+  // list & Search
   async getConversations(archived: boolean = false): Promise<Conversation[]> {
     const response = await api.get(`/conversations?archived=${archived}`);
     return response.data;
@@ -45,7 +45,7 @@ export const conversationService = {
     return response.data;
   },
 
-  // Member Management
+  // member Management
   async addMembers(id: string, userIds: string[], description?: string): Promise<any> {
     const response = await api.patch(`/conversations/${id}/members/add`, { userIds, description });
     return response.data;
@@ -73,7 +73,7 @@ export const conversationService = {
     return response.data;
   },
 
-  // Join Requests
+  // join Requests
   async listJoinRequests(id: string): Promise<any[]> {
     const response = await api.get(`/conversations/${id}/requests`);
     return response.data;
@@ -90,7 +90,7 @@ export const conversationService = {
     return response.data;
   },
 
-  // Actions (Archive, Mute, Remove)
+  // actions (Archive, Mute, Remove)
   async removeConversation(id: string): Promise<any> {
     const response = await api.delete(`/conversations/${id}/remove`);
     return response.data;

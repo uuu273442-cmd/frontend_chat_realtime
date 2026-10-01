@@ -18,10 +18,7 @@ import { useGlobalNotifications } from "../hooks/useGlobalNotifications";
 import { useSocket } from "../context/SocketContext";
 import { friendService } from "../services/friendService";
 
-// Tải CallModal/GroupCallModal theo yêu cầu (lazy) thay vì gộp luôn vào bundle
-// chính. Hai màn hình này khá nặng (logic WebRTC, nhiều icon) nhưng phần lớn
-// người dùng trong một phiên có thể không gọi cuộc nào — tách riêng giúp
-// trang chat tải nhanh hơn lúc mới đăng nhập, nhất là trên mạng di động.
+// tải CallModal/GroupCallModal theo yêu cầu (lazy) thay vì gộp luôn vào bundle
 const CallModal = lazy(() => import("../components/chat/CallModal"));
 const GroupCallModal = lazy(() => import("../components/chat/GroupCallModal"));
 
@@ -39,8 +36,7 @@ const ChatPage: React.FC = () => {
         ? "contacts"
         : "chats";
     const activeChat = chatId || null;
-    // Trên mobile: coi /friends cũng là "trang chi tiết" giống 1 cuộc trò
-    // chuyện — ẩn list bên trái, chỉ hiện ContactsView full màn hình
+    // trên mobile, /friends cũng là trang chi tiết (ẩn danh sách bên trái)
     const showDetail = !!activeChat || location.pathname.startsWith("/friends");
 
     const [prevActiveChat, setPrevActiveChat] = useState<string | null>(null);
@@ -70,9 +66,9 @@ const ChatPage: React.FC = () => {
         };
     } | null>(null);
 
-    // Map conversationId -> số pending join requests chưa xem
+    // map conversationId -> số pending join requests chưa xem
     const [pendingGroupRequests, setPendingGroupRequests] = useState<Record<string, number>>({});
-    // Trigger reload ConversationPanel pending list khi socket fire
+    // trigger reload ConversationPanel pending list khi socket fire
     const [reloadPendingTrigger, setReloadPendingTrigger] = useState(0);
 
     useGlobalNotifications(
@@ -91,18 +87,17 @@ const ChatPage: React.FC = () => {
     const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
     const [isCreatePrivateOpen, setIsCreatePrivateOpen] = useState(false);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
-    // Avatar của chính mình — AuthContext.user chỉ decode từ JWT (không có
-    // avatar), nên cần fetch riêng để hiện đúng ảnh đại diện trên SidebarPrimary
+    // avatar của chính mình
     const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
 
-    // Fetch pending friend requests count on mount
+    // fetch pending friend requests count on mount
     useEffect(() => {
         friendService.getFriendRequests()
             .then((data) => setPendingFriendCount(data?.length ?? 0))
             .catch(() => {});
     }, []);
 
-    // Fetch avatar của chính mình lúc mount — dùng cho SidebarPrimary
+    // fetch avatar của chính mình lúc mount
     const fetchMyAvatar = () => {
         if (!user?.sub) return;
         userService
@@ -116,7 +111,7 @@ const ChatPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.sub]);
 
-    // Reset badge khi user vào tab contacts
+    // reset badge khi user vào tab contacts
     useEffect(() => {
         if (currentView === "contacts") {
             setPendingFriendCount(0);
@@ -138,17 +133,13 @@ const ChatPage: React.FC = () => {
 
     useEffect(() => {
         const init = async () => {
-            // Gộp 2 lần gọi getConversations() thành 1 — trước đây
-            // fetchConversations() và restorePendingGroupBadges() mỗi cái gọi
-            // riêng lúc mount, bắn gần như đồng thời + Promise.all song song
-            // listJoinRequests cho từng group → dễ vượt rate limit (429 storm)
-            // ngay lúc khởi động app, gây đứng/lag đặc biệt rõ trên mobile
+            // gộp 2 lần gọi getConversations() thành 1
             const data = await fetchConversations();
             const groups = (data || []).filter((c: any) => c.type === "group");
             if (groups.length === 0) return;
 
             const counts: Record<string, number> = {};
-            // Chạy tuần tự thay vì Promise.all để tránh burst request cùng lúc
+            // chạy tuần tự thay vì Promise.all để tránh burst request cùng lúc
             for (const g of groups) {
                 try {
                     const requests = await conversationService.listJoinRequests(g._id);
@@ -156,7 +147,7 @@ const ChatPage: React.FC = () => {
                         counts[g._id] = requests.length;
                     }
                 } catch {
-                    // Bỏ qua nếu lỗi (không đủ quyền hoặc network)
+                    // bỏ qua nếu lỗi (không đủ quyền hoặc network)
                 }
             }
             if (Object.keys(counts).length > 0) {
@@ -240,17 +231,17 @@ const ChatPage: React.FC = () => {
         onRequestHandled: (payload) => {
             const cid = payload?.conversationId;
             if (!cid) return;
-            // Xóa badge pending cho conversation này
+            // xóa badge pending cho conversation này
             setPendingGroupRequests(prev => {
                 const next = { ...prev };
                 delete next[cid];
                 return next;
             });
-            // Trigger reload pending list trong ConversationPanel
+            // trigger reload pending list trong ConversationPanel
             setReloadPendingTrigger(prev => prev + 1);
         },
         onForceLeave: (cid, reason) => {
-            // Nếu đang mở đúng conversation bị xóa/rời/giải tán → navigate ra
+            // nếu đang mở đúng hội thoại bị xóa/rời/giải tán thì thoát ra
             if (activeChat === cid || window.location.pathname.includes(cid)) {
                 if (reason === 'dissolved') {
                     toast.error("Nhóm đã bị giải tán");
@@ -267,7 +258,7 @@ const ChatPage: React.FC = () => {
     useFriendSocket({
         onUpdate: fetchConversations,
         onReceived: () => {
-            // Chỉ tăng badge nếu user không đang ở tab contacts
+            // chỉ tăng badge nếu user không đang ở tab contacts
             if (currentView !== "contacts") {
                 setPendingFriendCount((prev) => prev + 1);
             }
@@ -349,7 +340,7 @@ const ChatPage: React.FC = () => {
                             next.delete(id);
                             return next;
                         });
-                        // Reset pending group request badge khi mở conversation đó
+                        // reset pending group request badge khi mở conversation đó
                         setPendingGroupRequests(prev => {
                             const next = { ...prev };
                             delete next[id];
@@ -367,7 +358,7 @@ const ChatPage: React.FC = () => {
                 />
             }
         >
-            {/* Sub-routing outlet */}
+            {/* sub-routing outlet */}
             <Outlet
                 context={{
                     activeChat,
@@ -396,17 +387,12 @@ const ChatPage: React.FC = () => {
             />
         </ChatLayout>
 
-        {/* Modals — render NGOÀI ChatLayout để tránh bị ẩn bởi mobile layout.
-            Trước đây nằm bên trong <ChatLayout> → bên trong <main> có class
-            'hidden md:flex' khi showDetail=false → modals bị hidden trên mobile
-            dù z-index cao (vì parent element hidden = toàn bộ subtree ẩn). */}
+        {/* modals */}
         {isSettingsOpen && (
             <SettingsModal
                 onClose={() => {
                     setIsSettingsOpen(false);
-                    // Đóng modal xong thì refetch avatar — nếu vừa đổi ảnh
-                    // đại diện, SidebarPrimary sẽ cập nhật ngay không cần
-                    // đăng nhập lại
+                    // đóng modal xong thì refetch avatar
                     fetchMyAvatar();
                 }}
             />

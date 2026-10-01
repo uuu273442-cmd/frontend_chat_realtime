@@ -5,7 +5,7 @@ interface UseConversationSocketOptions {
   onUpdate: () => void;
   onJoinRequested?: (payload: any) => void;
   onRequestHandled?: (payload: any) => void; // accept/reject xong → clear pending
-  // Callback khi user bị kick/rời/nhóm bị giải tán — để navigate ra ngoài
+  // callback khi user bị kick/rời/nhóm bị giải tán
   onForceLeave?: (conversationId: string, reason: 'dissolved' | 'removed' | 'left') => void;
 }
 
@@ -35,7 +35,7 @@ export const useConversationSocket = (
   useEffect(() => {
     if (!socket) return;
 
-    // Events thông thường — chỉ cần refresh list
+    // events thông thường
     const normalEvents = [
       'group_created',
       'group_added',
@@ -57,7 +57,7 @@ export const useConversationSocket = (
       if (cid) joinConversation(cid);
     };
 
-    // Events khiến user mất quyền truy cập conversation — cần navigate ra
+    // events khiến user mất quyền truy cập conversation
     const handleGroupRemoved = (payload?: any) => {
       onUpdateRef.current();
       const cid = payload?.conversationId;
@@ -81,7 +81,7 @@ export const useConversationSocket = (
       onJoinRequestedRef.current?.(payload);
     };
 
-    // Khi request được xử lý (accept/reject) → refresh list + clear pending
+    // khi request được xử lý (accept/reject) → refresh list + clear pending
     const handleRequestHandled = (payload?: any) => {
       handleNormal(payload);
       onRequestHandledRef.current?.(payload);

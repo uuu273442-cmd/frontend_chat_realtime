@@ -18,7 +18,7 @@ export interface Attachment {
   size: number;
   duration?: number; // for voice/video
   
-  // Aliases for compatibility
+  // aliases for compatibility
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;

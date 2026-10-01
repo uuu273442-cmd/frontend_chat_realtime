@@ -1,7 +1,6 @@
 import api from './authService';
 
-// STUN mặc định — dùng khi chưa gọi được API hoặc API lỗi, để cuộc gọi trong
-// cùng mạng (không cần TURN) vẫn hoạt động ngay cả khi backend đang gặp sự cố.
+// STUN mặc định
 const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -10,9 +9,7 @@ const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
 let cachedIceServers: RTCIceServer[] | null = null;
 
 export const callService = {
-  // Lấy danh sách STUN/TURN từ backend. Kết quả được lưu lại trong bộ nhớ
-  // của tab hiện tại (không phải localStorage) vì danh sách này không đổi
-  // trong một phiên làm việc — tránh gọi API lại mỗi lần bấm gọi.
+  // lấy danh sách STUN/TURN từ backend. Kết quả được lưu lại trong bộ nhớ
   async getIceServers(): Promise<RTCIceServer[]> {
     if (cachedIceServers) return cachedIceServers;
     try {
@@ -23,7 +20,7 @@ export const callService = {
         return servers;
       }
     } catch {
-      // Bỏ qua — dùng STUN mặc định bên dưới
+      // bỏ qua
     }
     return FALLBACK_ICE_SERVERS;
   },

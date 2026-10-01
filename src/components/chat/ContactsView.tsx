@@ -87,7 +87,7 @@ const ContactsView: React.FC<ContactsViewProps> = ({ onStartChat }) => {
         }
     };
 
-    // Group friends by first letter of their name
+    // group friends by first letter of their name
     const groupedFriends = friends
         .filter((f) => f.name.toLowerCase().includes(searchTerm.toLowerCase()))
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -122,7 +122,7 @@ const ContactsView: React.FC<ContactsViewProps> = ({ onStartChat }) => {
                 />
             )}
 
-            {/* Header - Zalo Style */}
+            {/* header - Zalo Style */}
             <header className="h-14 border-b border-gray-100 flex items-center justify-between px-4 md:px-6 flex-shrink-0">
                 <div className="flex items-center gap-3">
                     <button
@@ -140,7 +140,7 @@ const ContactsView: React.FC<ContactsViewProps> = ({ onStartChat }) => {
             </header>
 
             <div className="flex-1 overflow-y-auto bg-gray-50/50">
-                {/* Search & Actions Bar */}
+                {/* search & Actions Bar */}
                 <div className="p-4 bg-white border-b border-gray-100 flex flex-wrap gap-4 items-center">
                     <div className="flex-1 min-w-[200px] relative">
                         <Search
@@ -170,7 +170,7 @@ const ContactsView: React.FC<ContactsViewProps> = ({ onStartChat }) => {
                 </div>
 
                 <div className="max-w-5xl mx-auto p-6 space-y-8">
-                    {/* Friend Requests Section */}
+                    {/* friend Requests Section */}
                     {requests.length > 0 && (
                         <section className="animate-in fade-in slide-in-from-top-4 duration-500">
                             <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4 ml-1">
@@ -225,7 +225,7 @@ const ContactsView: React.FC<ContactsViewProps> = ({ onStartChat }) => {
                         </section>
                     )}
 
-                    {/* Friends List with Alphabet Headers */}
+                    {/* friends List with Alphabet Headers */}
                     <section className="bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
                             <h3 className="text-sm font-bold text-gray-800">

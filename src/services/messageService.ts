@@ -2,13 +2,13 @@ import api from './authService';
 import type { Message, Attachment } from '../types';
 
 export const messageService = {
-  // Send a simple text message
+  // send a simple text message
   async sendMessage(roomId: string, content: string, replyTo?: string, mentions?: string[]): Promise<Message> {
     const response = await api.post(`/messages/${roomId}`, { content, replyTo, mentions });
     return response.data.message;
   },
 
-  // Get messages for a conversation
+  // get messages for a conversation
   async getMessages(roomId: string, limit: number = 20, before?: string): Promise<{ messages: Message[], hasMore: boolean, nextCursor: string | null }> {
     const params = new URLSearchParams();
     if (limit) params.append('limit', limit.toString());
@@ -18,13 +18,13 @@ export const messageService = {
     return response.data;
   },
 
-  // Edit a message
+  // edit a message
   async editMessage(roomId: string, messageId: string, content: string): Promise<Message> {
     const response = await api.patch(`/messages/${roomId}`, { id: messageId, content });
     return response.data;
   },
 
-  // Delete a message
+  // delete a message
   async deleteMessage(roomId: string, messageId: string, scope: 'everyone' | 'self' = 'everyone'): Promise<any> {
     const response = await api.delete(`/messages/${roomId}?scope=${scope}`, {
       data: { id: messageId }
@@ -32,49 +32,49 @@ export const messageService = {
     return response.data;
   },
 
-  // Pin a message
+  // pin a message
   async pinMessage(roomId: string, messageId: string): Promise<any> {
     const response = await api.post(`/messages/${roomId}/pin`, { id: messageId });
     return response.data;
   },
 
-  // Unpin a message
+  // unpin a message
   async unpinMessage(roomId: string, messageId: string): Promise<any> {
     const response = await api.patch(`/messages/${roomId}/unpin`, { id: messageId });
     return response.data;
   },
 
-  // Search messages in a conversation
+  // search messages in a conversation
   async searchMessages(roomId: string, q: string): Promise<Message[]> {
     const response = await api.get(`/messages/${roomId}/search?q=${encodeURIComponent(q)}`);
     return response.data;
   },
 
-  // React to a message
+  // react to a message
   async reactToMessage(roomId: string, messageId: string, emoji: string): Promise<any> {
     const response = await api.post(`/messages/${roomId}/react`, { id: messageId, emoji });
     return response.data;
   },
 
-  // Unreact to a message
+  // unreact to a message
   async unreactFromMessage(roomId: string, messageId: string): Promise<any> {
     const response = await api.patch(`/messages/${roomId}/unreact`, { id: messageId });
     return response.data;
   },
 
-  // Mark conversation as seen
+  // mark conversation as seen
   async markAsSeen(roomId: string): Promise<any> {
     const response = await api.patch(`/messages/${roomId}/seen`);
     return response.data;
   },
 
-  // Forward a message
+  // forward a message
   async forwardMessage(roomId: string, messageId: string, conversationIds: string[]): Promise<Message[]> {
     const response = await api.post(`/messages/${roomId}/forward`, { id: messageId, conversationIds });
     return response.data;
   },
 
-  // Upload files
+  // upload files
   async uploadFiles(roomId: string, files: File[], replyTo?: string): Promise<{ message: Message, attachments: Attachment[] }> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
@@ -86,7 +86,7 @@ export const messageService = {
     return response.data;
   },
 
-  // Upload media (images/videos)
+  // upload media (images/videos)
   async uploadMedia(roomId: string, files: File[], replyTo?: string): Promise<{ message: Message, attachments: Attachment[] }> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
@@ -98,7 +98,7 @@ export const messageService = {
     return response.data;
   },
 
-  // Upload voice
+  // upload voice
   async uploadVoice(roomId: string, file: File, replyTo?: string): Promise<{ message: Message, attachments: Attachment[] }> {
     const formData = new FormData();
     formData.append('file', file);
@@ -110,7 +110,7 @@ export const messageService = {
     return response.data;
   },
 
-  // Link preview message
+  // link preview message
   async sendLinkPreview(roomId: string, content: string, replyTo?: string): Promise<Message> {
     const response = await api.post(`/messages/${roomId}/link-preview`, { content, replyTo });
     return response.data;

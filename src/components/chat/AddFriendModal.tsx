@@ -66,9 +66,7 @@ const AddFriendModal: React.FC<AddFriendModalProps> = ({ onClose }) => {
     }
   };
 
-  // Nhắn tin trực tiếp KHÔNG cần kết bạn trước — privacy logic đã tự phân
-  // biệt bạn bè/người lạ ở tầng khác, conversation với người lạ sẽ tự vào
-  // mục Lưu trữ phía người nhận (xử lý ở BE conversation.service.ts)
+  // nhắn tin trực tiếp KHÔNG cần kết bạn trước
   const handleStartChat = async (userId: string) => {
     setIsChatStarting(userId);
     try {
@@ -163,7 +161,7 @@ const AddFriendModal: React.FC<AddFriendModalProps> = ({ onClose }) => {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {/* Nhắn tin thẳng — không cần kết bạn trước */}
+                      {/* nhắn tin thẳng */}
                       <button
                         onClick={() => handleStartChat(user._id)}
                         disabled={isChatStarting === user._id}

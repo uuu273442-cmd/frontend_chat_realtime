@@ -33,7 +33,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Form states
+    // form states
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
@@ -41,7 +41,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     const [avatar, setAvatar] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
 
-    // Privacy states
+    // privacy states
     const [lastSeenVisibility, setLastSeenVisibility] = useState<
         "everyone" | "friends" | "nobody"
     >("everyone");
@@ -49,7 +49,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     const [showTypingIndicator, setShowTypingIndicator] = useState(true);
     const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
 
-    // Status states
+    // status states
     const [status, setStatus] = useState<
         "online" | "away" | "busy" | "offline"
     >("online");
@@ -62,8 +62,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         }
     }, [user]);
 
-    // Giải phóng object URL của avatar preview khi component unmount
-    // (đóng modal mà chưa Save) — tránh memory leak
+    // giải phóng object URL của avatar preview khi component unmount
     useEffect(() => {
         return () => {
             if (preview && preview.startsWith("blob:")) {
@@ -81,15 +80,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             setBio(data.bio || "");
             setPreview(data.avatar || null);
 
-            // Status — lấy trực tiếp từ profile response (không cần API riêng)
+            // status
             setStatus(data.status || "online");
             setCustomStatusMessage(data.customStatusMessage || "");
 
-            // Privacy — dùng endpoint riêng để đảm bảo dữ liệu chuẩn nhất
+            // privacy
             try {
-                // BE trả về {_id, privacy: {lastSeenVisibility, ...}} — CÓ 1 TẦNG
-                // NESTING, không phải object phẳng. Đây là bug khiến settings
-                // luôn hiện lại mặc định dù đã lưu đúng vào DB.
+                // bE trả về {_id, privacy: {lastSeenVisibility, ...}}
                 const res = await userService.getPrivacy();
                 const p = res?.privacy;
                 setLastSeenVisibility(
@@ -100,7 +97,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     p?.showTypingIndicator ?? true,
                 );
             } catch {
-                // Fallback: nếu endpoint riêng lỗi, dùng privacy nested trong profile
+                // fallback: nếu endpoint riêng lỗi, dùng privacy nested trong profile
                 if (data.privacy) {
                     setLastSeenVisibility(
                         data.privacy.lastSeenVisibility || "everyone",
@@ -120,7 +117,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         }
     };
 
-    // Auto-save privacy — gọi ngay khi user đổi 1 trong 3 setting, không cần nút Save riêng
+    // auto-save privacy
     const savePrivacy = async (
         overrides: Partial<{
             lastSeenVisibility: "everyone" | "friends" | "nobody";
@@ -145,7 +142,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         }
     };
 
-    // Auto-save status khi đổi dropdown; customStatusMessage lưu khi blur input
+    // auto-save status khi đổi dropdown; customStatusMessage lưu khi blur input
     const saveStatus = async (
         overrides: Partial<{
             status: "online" | "away" | "busy" | "offline";
@@ -170,7 +167,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validate loại file và kích thước trước khi tạo preview
+        // validate loại file và kích thước trước khi tạo preview
         if (!file.type.startsWith("image/")) {
             toast.error("Vui lòng chọn file ảnh (jpg, png, webp...)");
             return;
@@ -181,7 +178,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         }
 
         // useEffect cleanup phía trên sẽ tự động revoke object URL cũ khi
-        // preview đổi giá trị — không cần revoke thủ công ở đây
         setAvatar(file);
         setPreview(URL.createObjectURL(file));
     };
@@ -213,7 +209,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex justify-center items-center z-[100] p-0 md:p-4 animate-in fade-in duration-300">
             <div className="bg-white w-full h-full md:h-[70vh] md:max-w-3xl md:rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden animate-in zoom-in-95 duration-300">
-                {/* Sidebar — thanh tab ngang cuộn được trên mobile, cột dọc cố định trên desktop */}
+                {/* sidebar */}
                 <div className="w-full md:w-56 bg-gray-50 border-b md:border-b-0 md:border-r border-gray-100 p-3 md:p-6 flex flex-row md:flex-col gap-2 flex-shrink-0 overflow-x-auto md:overflow-visible">
                     <h2 className="hidden md:block text-lg font-black mb-6 text-gray-900 px-2">
                         Cài đặt
@@ -257,7 +253,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     </div>
                 </div>
 
-                {/* Content */}
+                {/* content */}
                 <div className="flex-1 flex flex-col relative bg-white overflow-hidden min-h-0">
                     <button
                         onClick={onClose}
@@ -435,7 +431,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                             </p>
                                         </div>
 
-                                        {/* ── Trạng thái hoạt động ── */}
+                                        {/* trạng thái hoạt động */}
                                         <div className="space-y-4">
                                             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-gray-400">
                                                 <Radio size={13} />
@@ -526,7 +522,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                             </div>
                                         </div>
 
-                                        {/* ── Quyền riêng tư ── */}
+                                        {/* quyền riêng tư */}
                                         <div className="space-y-4">
                                             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-gray-400">
                                                 <Shield size={13} />
@@ -539,7 +535,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                                 )}
                                             </div>
 
-                                            {/* Lần cuối truy cập */}
+                                            {/* lần cuối truy cập */}
                                             <div className="p-5 border border-gray-100 rounded-2xl flex items-center justify-between gap-4">
                                                 <div className="flex items-center gap-4 min-w-0">
                                                     <div className="p-3 bg-purple-50 rounded-xl text-purple-600 flex-shrink-0">
@@ -590,7 +586,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                                 </select>
                                             </div>
 
-                                            {/* Đã xem tin nhắn */}
+                                            {/* đã xem tin nhắn */}
                                             <div className="p-5 border border-gray-100 rounded-2xl flex items-center justify-between hover:bg-gray-50 transition-colors">
                                                 <div className="flex items-center gap-4">
                                                     <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
@@ -637,7 +633,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                                 </button>
                                             </div>
 
-                                            {/* Đang nhập... */}
+                                            {/* đang nhập */}
                                             <div className="p-5 border border-gray-100 rounded-2xl flex items-center justify-between hover:bg-gray-50 transition-colors">
                                                 <div className="flex items-center gap-4">
                                                     <div className="p-3 bg-green-50 rounded-xl text-green-600">

@@ -21,9 +21,7 @@ export const useGlobalNotifications = (
       const conversationId = msg.conversationId?.toString() || msg.conversationId;
       const senderId = (msg.senderId?._id || msg.senderId)?.toString();
 
-      // Only show notification if:
-      // 1. Message is not from current user
-      // 2. User is not currently in the conversation room
+      // only show notification if
       if (senderId !== user.sub && conversationId !== activeChatId) {
         const senderName = msg.senderId?.name || 'Ai đó';
         const content = msg.type === 'text' ? msg.content : `Đã gửi một ${msg.type}`;
@@ -55,12 +53,10 @@ export const useGlobalNotifications = (
       const msg = payload.message || payload;
       const conversationId = msg.conversationId?.toString() || msg.conversationId;
       
-      // Notify listeners about the mention
+      // notify listeners about the mention
       if (onMention) onMention(conversationId);
 
-      // If we are already in this chat, we might not want a toast, 
-      // but mentions are important enough that some apps show them anyway.
-      // Let's show it if we are NOT in the active chat.
+      // if we are already in this chat, we might not want a toast
       if (conversationId !== activeChatId) {
         const senderName = msg.senderId?.name || 'Ai đó';
         toast((t) => (

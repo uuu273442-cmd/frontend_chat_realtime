@@ -66,7 +66,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSuccess 
   return (
     <Modal isOpen={true} onClose={onClose} title="Tạo nhóm trò chuyện" maxWidth="max-w-[460px]">
       <div className="p-6">
-        {/* Group Name Input */}
+        {/* group Name Input */}
         <div className="mb-6">
           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1 mb-1.5 block">Tên nhóm</label>
           <input
@@ -78,7 +78,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSuccess 
           />
         </div>
 
-        {/* Search Members */}
+        {/* search Members */}
         <div className="mb-4">
           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1 mb-1.5 block">Thêm thành viên</label>
           <div className="relative group">
@@ -95,7 +95,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSuccess 
           </div>
         </div>
 
-        {/* Selected Users Badges */}
+        {/* selected Users Badges */}
         {selectedUsers.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
             {selectedUsers.map(user => (
@@ -110,7 +110,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSuccess 
           </div>
         )}
 
-        {/* Friends List */}
+        {/* friends List */}
         <div className="max-h-[200px] overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-50 mb-6 shadow-inner bg-gray-50/30">
           {isLoading ? (
             <div className="py-8 flex justify-center text-blue-500">
@@ -142,7 +142,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSuccess 
           )}
         </div>
 
-        {/* Action Button */}
+        {/* action Button */}
         <button
           onClick={handleCreateGroup}
           disabled={isCreating || !groupName.trim() || selectedUsers.length === 0}

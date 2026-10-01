@@ -63,7 +63,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
     const [isArchivedLoading, setIsArchivedLoading] = useState(false);
     const { presenceMap } = useSocket();
 
-    // Presence real-time — ưu tiên socket, fallback snapshot lúc fetch conversation
+    // presence real-time
     const getPresence = (other: any) => {
         if (!other) return null;
         const otherId = other._id || other;
@@ -154,7 +154,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
 
     return (
         <aside className="w-full md:w-72 h-full bg-[#f7f7f7] border-r border-gray-200 flex flex-col min-w-0 relative">
-            {/* Search Header */}
+            {/* search Header */}
             <div className="p-3 flex gap-2">
                 <div className="flex-1 relative group">
                     <Search
@@ -187,7 +187,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                 </div>
             </div>
 
-            {/* List Content */}
+            {/* list Content */}
             <div className="flex-1 overflow-y-auto">
                 {currentView === "chats" ? (
                     <div className="py-1">
@@ -240,7 +240,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                                                 name={convName}
                                                 size="md"
                                             />
-                                            {/* Chấm trạng thái — góc dưới phải, chỉ cho private chat */}
+                                            {/* chấm trạng thái */}
                                             {isPrivate && presence && (
                                                 <div
                                                     className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${statusDotColor[presence.status] || statusDotColor.offline}`}
@@ -258,7 +258,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                                                     }
                                                 />
                                             )}
-                                            {/* Bong bóng trạng thái tùy chỉnh — góc trên phải, kiểu Messenger */}
+                                            {/* bong bóng trạng thái tùy chỉnh */}
                                             {isPrivate &&
                                                 presence?.status !==
                                                     "offline" &&
@@ -343,7 +343,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Hover 3-dot */}
+                                        {/* hover 3-dot */}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
@@ -364,7 +364,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                             </div>
                         )}
 
-                        {/* ── Archived Section ── */}
+                        {/* archived Section */}
                         {!searchTerm && (
                             <div className="border-t border-gray-200 mt-1">
                                 <button
@@ -458,8 +458,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                                                                     className="text-white"
                                                                 />
                                                             </div>
-                                                            {/* Chấm đỏ báo tin nhắn chưa đọc — quan trọng cho conversation
-                                                                từ người lạ tự động lưu trữ, tránh bị bỏ sót hoàn toàn */}
+                                                            {/* chấm đỏ báo tin nhắn chưa đọc */}
                                                             {conv.unreadCount >
                                                                 0 && (
                                                                 <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full border-2 border-white" />
@@ -526,14 +525,14 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                 )}
             </div>
 
-            {/* Context Menu */}
+            {/* context Menu */}
             {contextMenu && (
                 <div
                     className="fixed bg-white border border-gray-100 shadow-2xl rounded-2xl w-52 py-1.5 z-[100] animate-in fade-in zoom-in-95"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    {/* Info */}
+                    {/* info */}
                     <button
                         onClick={() => {
                             onOpenInfo?.(contextMenu.conv);
@@ -547,7 +546,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
 
                     <div className="h-px bg-gray-100 my-1" />
 
-                    {/* Archive / Unarchive */}
+                    {/* archive / Unarchive */}
                     {contextMenu.isArchived ? (
                         <button
                             onClick={() =>
@@ -583,7 +582,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                         </button>
                     )}
 
-                    {/* Mute / Unmute */}
+                    {/* mute / Unmute */}
                     {isMuted(contextMenu.conv) ? (
                         <button
                             onClick={() =>
@@ -621,10 +620,10 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
 
                     <div className="h-px bg-gray-100 my-1" />
 
-                    {/* Group-specific — đồng bộ role logic với ConversationPanel */}
+                    {/* group-specific */}
                     {contextMenu.conv.type === "group" && (
                         <>
-                            {/* Member/Admin: rời nhóm. Owner: không có nút này */}
+                            {/* member/Admin: rời nhóm. Owner: không có nút này */}
                             {!isOwner(contextMenu.conv) && (
                                 <button
                                     onClick={() =>
@@ -639,7 +638,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                                     <LogOut size={14} /> Rời nhóm
                                 </button>
                             )}
-                            {/* Owner only: giải tán nhóm */}
+                            {/* owner only: giải tán nhóm */}
                             {isOwner(contextMenu.conv) && (
                                 <button
                                     onClick={() =>
@@ -657,7 +656,7 @@ const SidebarSecondary: React.FC<SidebarSecondaryProps> = ({
                         </>
                     )}
 
-                    {/* Private-specific */}
+                    {/* private-specific */}
                     {contextMenu.conv.type === "private" && (
                         <button
                             onClick={() =>

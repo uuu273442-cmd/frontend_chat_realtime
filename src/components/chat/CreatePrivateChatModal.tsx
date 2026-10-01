@@ -51,7 +51,7 @@ const CreatePrivateChatModal: React.FC<CreatePrivateChatModalProps> = ({ onClose
   return (
     <Modal isOpen={true} onClose={onClose} title="Tạo trò chuyện mới" maxWidth="max-w-[400px]">
       <div className="p-6">
-        {/* Search Input */}
+        {/* search Input */}
         <div className="mb-4">
           <div className="relative group">
             <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors">
@@ -67,7 +67,7 @@ const CreatePrivateChatModal: React.FC<CreatePrivateChatModalProps> = ({ onClose
           </div>
         </div>
 
-        {/* Friends List */}
+        {/* friends List */}
         <div className="max-h-[300px] overflow-y-auto divide-y divide-gray-50 pr-2">
           {isLoading ? (
             <div className="py-10 flex justify-center text-blue-500">

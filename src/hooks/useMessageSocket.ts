@@ -6,7 +6,7 @@ interface UseMessageSocketProps {
     currentUserId?: string;
     onNewMessage: (message: any) => void;
     onConversationUpdate: () => void;
-    // Fine-grained handlers for inline state updates
+    // fine-grained handlers for inline state updates
     onMessageEdited?: (payload: any) => void;
     onMessageDeleted?: (payload: any) => void;
     onMessageReacted?: (payload: any) => void;
@@ -14,8 +14,7 @@ interface UseMessageSocketProps {
     onMessagePinned?: (payload: any) => void;
     onMessageUnpinned?: (payload: any) => void;
     onMessageForwarded?: (payload: any) => void;
-    // Payload: mảng LinkPreview docs [{ messageId, url, title, description, image }]
-    // KHÔNG phải Message object — cần gộp vào message đã tồn tại theo messageId
+    // payload: mảng LinkPreview docs [{ messageId, url, title, description, image }]
     onLinkPreview?: (payload: any[]) => void;
 }
 
@@ -50,9 +49,8 @@ export const useMessageSocket = ({
 
         if (!socket) return;
 
-        // ── New message arrival events ──
-        // "new_message_linkPreview" KHÔNG nằm trong nhóm này — payload của nó là
-        // mảng LinkPreview docs, khác cấu trúc Message hoàn toàn
+        // new message arrival events
+        // "new_message_linkPreview" KHÔNG nằm trong nhóm này
         const arrivalEvents = [
             "new_message",
             "new_message_file",
@@ -68,15 +66,15 @@ export const useMessageSocket = ({
             });
         });
 
-        // Link preview đến sau khi message text đã tồn tại — cần gộp vào message cũ
+        // link preview đến sau khi message text đã tồn tại
         socket.on("new_message_linkPreview", (payload: any[]) => {
             if (onLinkPreview) {
                 onLinkPreview(payload);
             }
         });
 
-        // ── message_edited ──
-        // Payload: full populated message object
+        // message_edited
+        // payload: full populated message object
         socket.on("message_edited", (payload: any) => {
             if (onMessageEdited) {
                 onMessageEdited(payload);
@@ -85,8 +83,8 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── message_deleted ──
-        // Payload: { messageId, scope: 'everyone' | 'self', deletedBy }
+        // message_deleted
+        // payload: { messageId, scope: 'everyone' | 'self', deletedBy }
         socket.on("message_deleted", (payload: any) => {
             if (onMessageDeleted) {
                 onMessageDeleted(payload);
@@ -95,8 +93,8 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── message_reacted ──
-        // Payload: { messageId, userId, emoji, action: 'add' | 'remove' }
+        // message_reacted
+        // payload: { messageId, userId, emoji, action: 'add' | 'remove' }
         socket.on("message_reacted", (payload: any) => {
             if (onMessageReacted) {
                 onMessageReacted(payload);
@@ -105,8 +103,8 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── message_seen ──
-        // Payload: { conversationId, messageId, seenBy: { _id, name, avatar } }
+        // message_seen
+        // payload: { conversationId, messageId, seenBy: { _id, name, avatar } }
         socket.on("message_seen", (payload: any) => {
             if (onMessageSeen) {
                 onMessageSeen(payload);
@@ -115,8 +113,8 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── message_pinned ──
-        // Payload: { messageId, isPinned: true, pinByUser, pinnedAt }
+        // message_pinned
+        // payload: { messageId, isPinned: true, pinByUser, pinnedAt }
         socket.on("message_pinned", (payload: any) => {
             if (onMessagePinned) {
                 onMessagePinned(payload);
@@ -125,8 +123,8 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── message_unpinned ──
-        // Payload: { messageId, isPinned: false, pinByUser: null, pinnedAt: null }
+        // message_unpinned
+        // payload: { messageId, isPinned: false, pinByUser: null, pinnedAt: null }
         socket.on("message_unpinned", (payload: any) => {
             if (onMessageUnpinned) {
                 onMessageUnpinned(payload);
@@ -135,7 +133,7 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── message_forwarded ──
+        // message_forwarded
         socket.on("message_forwarded", (payload: any) => {
             if (onMessageForwarded) {
                 onMessageForwarded(payload);
@@ -144,12 +142,12 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── mention_received ──
+        // mention_received
         socket.on("mention_received", () => {
             onConversationUpdate();
         });
 
-        // ── Typing ──
+        // typing
         socket.on("user_typing", (payload: any) => {
             if (
                 payload.conversationId === activeChat &&
@@ -168,7 +166,7 @@ export const useMessageSocket = ({
             }
         });
 
-        // ── Group management events ──
+        // group management events
         const groupEvents = [
             "group_member_added",
             "group_member_removed",

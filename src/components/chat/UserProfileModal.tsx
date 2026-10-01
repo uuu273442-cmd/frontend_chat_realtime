@@ -27,7 +27,7 @@ const statusDotColor: Record<string, string> = {
     offline: "bg-gray-300",
 };
 
-// Format "lần cuối truy cập" kiểu tương đối (vd: "5 phút trước")
+// format "lần cuối truy cập" kiểu tương đối (vd: "5 phút trước")
 const formatLastSeen = (dateStr: string | null | undefined): string | null => {
     if (!dateStr) return null;
     const date = new Date(dateStr);
@@ -42,7 +42,7 @@ const formatLastSeen = (dateStr: string | null | undefined): string | null => {
     return date.toLocaleDateString("vi-VN");
 };
 
-// Format ngày tham gia (vd: "Tháng 3, 2026")
+// format ngày tham gia (vd: "Tháng 3, 2026")
 const formatJoinedDate = (dateStr: string | null | undefined): string | null => {
     if (!dateStr) return null;
     const date = new Date(dateStr);
@@ -77,9 +77,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, onClose }) 
                 ]);
                 if (cancelled) return;
                 setProfile(profileData);
-                // BE trả về mảng BlockedUser records: {blockedId: {populated user}}
-                // KHÔNG phải mảng user trực tiếp — field đúng là blockedId, không
-                // phải userId hay _id (đó là _id của record chặn, không liên quan)
+                // bE trả về mảng BlockedUser records: {blockedId: {populated user}}
                 const blockedIds = (blockedList || []).map(
                     (record: any) =>
                         record.blockedId?._id || record.blockedId,
@@ -186,7 +184,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, onClose }) 
                     </div>
                 ) : (
                     <>
-                        {/* Cover + avatar */}
+                        {/* cover + avatar */}
                         <div className="h-24 bg-gradient-to-br from-blue-500 to-purple-600 relative">
                             <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
                                 <div className="relative">
@@ -229,7 +227,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, onClose }) 
                                 </p>
                             )}
 
-                            {/* Lần cuối truy cập — chỉ hiện khi BE trả về (đã qua check privacy) */}
+                            {/* lần cuối truy cập */}
                             {profile.status !== "online" &&
                                 formatLastSeen(profile.lastSeen) && (
                                     <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-400">
@@ -238,14 +236,14 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, onClose }) 
                                     </div>
                                 )}
 
-                            {/* Giới thiệu bản thân */}
+                            {/* giới thiệu bản thân */}
                             {profile.bio && (
                                 <p className="mt-3 text-sm text-gray-700 leading-relaxed px-2">
                                     {profile.bio}
                                 </p>
                             )}
 
-                            {/* Ngày tham gia */}
+                            {/* ngày tham gia */}
                             {formatJoinedDate(profile.createdAt) && (
                                 <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-400">
                                     <Calendar size={12} />
@@ -253,7 +251,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, onClose }) 
                                 </div>
                             )}
 
-                            {/* Info bổ sung — chỉ hiện nếu BE trả về (tùy quyền riêng tư) */}
+                            {/* info bổ sung */}
                             {(profile.email || profile.phoneNumber) && (
                                 <div className="w-full mt-4 space-y-2 text-left">
                                     {profile.email && (
@@ -271,10 +269,10 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, onClose }) 
                                 </div>
                             )}
 
-                            {/* Actions — ẩn hoàn toàn nếu đang xem chính mình */}
+                            {/* actions */}
                             {!isSelf && (
                                 <div className="w-full mt-5 space-y-2">
-                                    {/* Nút kết bạn — chỉ hiện khi CHƯA là bạn bè */}
+                                    {/* nút kết bạn */}
                                     {friendStatus?.status === "none" && (
                                         <button
                                             onClick={handleFriendAction}

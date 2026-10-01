@@ -4,18 +4,14 @@ import { Loader2 } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 import { useAuth } from "./context/AuthContext";
 
-// Tải theo route (lazy) — người chưa đăng nhập chỉ cần tải code của trang
-// đăng nhập, không cần tải toàn bộ code trang chat (vốn khá lớn: danh sách
-// hội thoại, khung chat, các modal...) và ngược lại. Vì hai nhóm trang này
-// không bao giờ hiển thị cùng lúc, tách riêng giúp lần tải đầu nhẹ hơn hẳn.
+// tải theo route (lazy)
 const AuthPage       = lazy(() => import("./pages/AuthPage"));
 const ChatPage       = lazy(() => import("./pages/ChatPage"));
 const ChatPlaceholder = lazy(() => import("./pages/ChatPlaceholder"));
 const ChatContent    = lazy(() => import("./pages/ChatContent"));
 const ContactsPage   = lazy(() => import("./pages/ContactsPage"));
 
-// Màn hình chờ khi đang tải 1 chunk — chỉ thấy trong chốc lát vì các chunk
-// đều nhỏ, nhưng vẫn cần để tránh màn hình trắng giữa lúc chuyển route.
+// màn hình chờ khi đang tải 1 chunk
 const RouteLoading = () => (
     <div className="h-dvh w-full flex items-center justify-center bg-white">
         <Loader2 className="animate-spin text-blue-600" size={28} />
@@ -69,7 +65,7 @@ function App() {
                         }
                     />
 
-                    {/* tuyen duong chinh: chatPage la layout shell, cac trang con render qua outlet */}
+                    {/* tuyen duong chinh */}
                     <Route
                         path="/chat"
                         element={

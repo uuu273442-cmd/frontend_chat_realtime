@@ -14,15 +14,14 @@ const formatTime = (seconds: number): string => {
     return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
-// Waveform giả lập cố định (không phân tích audio thật — nhẹ, đủ đẹp)
-// Seed theo src để mỗi voice message có hình dáng khác nhau nhưng ổn định
+// waveform giả lập cố định (không phân tích audio thật
 const generateBars = (seed: string, count = 32): number[] => {
     let h = 0;
     for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
     const bars: number[] = [];
     for (let i = 0; i < count; i++) {
         h = (h * 1103515245 + 12345) >>> 0;
-        // Chiều cao 30%-100%
+        // chiều cao 30%-100%
         bars.push(30 + (h % 71));
     }
     return bars;
@@ -80,7 +79,7 @@ const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             audio.pause();
             setIsPlaying(false);
         } else {
-            // Dừng các audio khác đang phát trên trang (chỉ 1 voice message phát cùng lúc)
+            // dừng các audio khác đang phát trên trang (chỉ 1 voice message phát cùng lúc)
             document.querySelectorAll("audio[data-voice-player]").forEach((el) => {
                 if (el !== audio) (el as HTMLAudioElement).pause();
             });
@@ -117,7 +116,7 @@ const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         <div className="flex items-center gap-2.5 min-w-[220px] max-w-[260px] py-0.5">
             <audio ref={audioRef} src={src} preload="metadata" data-voice-player />
 
-            {/* Play/Pause button */}
+            {/* play/Pause button */}
             <button
                 onClick={togglePlay}
                 disabled={isLoading}
@@ -133,7 +132,7 @@ const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
             </button>
 
             <div className="flex-1 min-w-0">
-                {/* Waveform / progress bar */}
+                {/* waveform / progress bar */}
                 <div
                     onClick={handleSeek}
                     className="flex items-center gap-[2px] h-6 cursor-pointer select-none"
@@ -151,7 +150,7 @@ const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
                     })}
                 </div>
 
-                {/* Time + speed */}
+                {/* time + speed */}
                 <div className="flex items-center justify-between mt-0.5">
                     <span className={`text-[10px] font-medium ${subTextColor}`}>
                         {formatTime(isPlaying || currentTime > 0 ? currentTime : duration)}

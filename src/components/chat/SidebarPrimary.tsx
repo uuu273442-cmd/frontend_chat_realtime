@@ -36,7 +36,7 @@ const SidebarPrimary: React.FC<SidebarPrimaryProps> = ({
                        md:static md:h-full md:w-[58px] md:flex-col md:justify-start md:py-4
                        bg-[#0068ff] flex items-center flex-shrink-0 shadow-xl"
         >
-            {/* User Profile — trên mobile là 1 nav item ngang hàng, desktop nằm trên cùng */}
+            {/* user Profile */}
             <button
                 type="button"
                 className="cursor-pointer md:mb-6 group relative flex flex-col items-center justify-center flex-1 md:flex-none h-full md:h-auto"
@@ -51,7 +51,7 @@ const SidebarPrimary: React.FC<SidebarPrimaryProps> = ({
                 />
             </button>
 
-            {/* Navigation */}
+            {/* navigation */}
             <div className="flex flex-row md:flex-col gap-1 flex-1 md:flex-none md:w-full">
                 <button
                     onClick={() => setCurrentView("chats")}
@@ -66,7 +66,7 @@ const SidebarPrimary: React.FC<SidebarPrimaryProps> = ({
                     )}
                 </button>
 
-                {/* Contacts button với badge */}
+                {/* contacts button với badge */}
                 <button
                     onClick={() => setCurrentView("contacts")}
                     className={`flex-1 md:w-full py-2 md:py-3 flex flex-col md:flex-row items-center justify-center gap-0.5 transition-all relative group ${currentView === "contacts" ? "bg-[#005ae0] text-white" : "text-white/70 hover:bg-white/10"}`}
@@ -88,8 +88,7 @@ const SidebarPrimary: React.FC<SidebarPrimaryProps> = ({
                 </button>
             </div>
 
-            {/* Utilities — Cloud/Briefcase chưa gắn chức năng, ẩn trên mobile
-                để tiết kiệm chỗ trong thanh bottom nav, vẫn giữ trên desktop */}
+            {/* utilities */}
             <div className="hidden md:flex md:mt-auto md:flex-col items-center gap-1 w-full pb-2">
                 <button className="w-full py-3 flex justify-center text-white/70 hover:bg-white/10 transition-all group">
                     <Cloud
@@ -122,8 +121,7 @@ const SidebarPrimary: React.FC<SidebarPrimaryProps> = ({
                 </button>
             </div>
 
-            {/* Logout — mobile chỉ hiện 1 icon gọn trong bottom nav (Settings/Cloud/
-                Briefcase gộp vào nút avatar ở trên để tiết kiệm không gian) */}
+            {/* logout */}
             <button
                 onClick={onLogout}
                 className="md:hidden flex-1 py-2 flex flex-col items-center justify-center gap-0.5 text-white/70 active:bg-red-500/30 transition-all"

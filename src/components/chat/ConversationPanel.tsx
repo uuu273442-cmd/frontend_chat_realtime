@@ -68,7 +68,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
     const [pendingRequests, setPendingRequests] = useState<any[]>([]);
     const [isPendingLoading, setIsPendingLoading] = useState(false);
 
-    // Backend returns { year: { month: [items] } } — flatten it to a plain array
+    // backend returns { year: { month: [items] } }
     const flattenHashTable = (data: any): any[] => {
         if (Array.isArray(data)) return data;
         if (!data || typeof data !== "object") return [];
@@ -110,7 +110,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
         else if (tab === "members") loadPendingRequests();
     }, [tab, conversationId]);
 
-    // Khi socket fire group_join_requested → reload pending list ngay (kể cả khi panel đang mở)
+    // khi socket fire group_join_requested → reload pending list ngay (kể cả khi panel đang mở)
     useEffect(() => {
         if (reloadPendingTrigger > 0 && isGroup) {
             loadPendingRequests();
@@ -172,7 +172,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
             const data = await conversationService.listJoinRequests(conversationId);
             setPendingRequests(data || []);
         } catch {
-            // Không toast — member bình thường gọi API này có thể bị lỗi auth cũ
+            // không toast
         } finally {
             setIsPendingLoading(false);
         }
@@ -201,8 +201,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
         if (!confirm("Bạn có chắc muốn rời nhóm?")) return;
         try {
             await conversationService.leaveGroup(conversationId);
-            // Socket group_left_self sẽ trigger navigate — không cần gọi onConversationAction ở đây
-            // để tránh race condition navigate 2 lần
+            // socket group_left_self sẽ trigger navigate
         } catch (err: any) {
             const msg = err?.response?.data?.message;
             if (msg?.includes("owner")) {
@@ -217,7 +216,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
         if (!confirm("Bạn có chắc muốn giải tán nhóm? Hành động này không thể hoàn tác.")) return;
         try {
             await conversationService.disbandGroup(conversationId);
-            // Socket group_dissolved sẽ trigger navigate cho tất cả members
+            // socket group_dissolved sẽ trigger navigate cho tất cả members
         } catch {
             toast.error("Không thể giải tán nhóm");
         }
@@ -264,7 +263,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
 
     return (
         <div className="fixed inset-0 z-40 md:static md:inset-auto md:z-auto w-full md:w-80 h-full bg-white border-l border-gray-100 flex flex-col shadow-lg flex-shrink-0 animate-in slide-in-from-right duration-300">
-            {/* Header */}
+            {/* header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <span className="font-bold text-sm text-gray-800">
                     Thông tin hội thoại
@@ -277,7 +276,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                 </button>
             </div>
 
-            {/* Profile section */}
+            {/* profile section */}
             <div className="flex flex-col items-center py-6 px-4 border-b border-gray-100 bg-gradient-to-b from-blue-50/50 to-white">
                 <Avatar name={displayName || "?"} size="xl" />
                 <div className="mt-3 font-bold text-gray-900 text-base text-center">
@@ -294,7 +293,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                     </div>
                 )}
 
-                {/* Quick actions */}
+                {/* quick actions */}
                 <div className="flex gap-3 mt-4">
                     <button
                         onClick={handleMute}
@@ -317,7 +316,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                 </div>
             </div>
 
-            {/* Tabs */}
+            {/* tabs */}
             <div className="flex gap-0.5 p-2 bg-gray-50 border-b border-gray-100 overflow-x-auto flex-shrink-0">
                 {TABS.map((t) => (
                     <button
@@ -338,7 +337,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                 ))}
             </div>
 
-            {/* Tab Content */}
+            {/* tab Content */}
             <div className="flex-1 overflow-y-auto">
                 {isLoading ? (
                     <div className="flex justify-center py-10">
@@ -349,7 +348,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                     </div>
                 ) : (
                     <>
-                        {/* INFO TAB */}
+                        {/* info tab */}
                         {tab === "info" && (
                             <div className="p-4 space-y-2">
                                 {isPrivate && otherUser && (
@@ -396,9 +395,9 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                                         </div>
                                     </div>
                                 )}
-                                {/* Danger zone — đồng bộ logic role */}
+                                {/* danger zone */}
                                 <div className="mt-4 pt-4 border-t border-gray-100 space-y-1">
-                                    {/* Member và admin: rời nhóm. Owner: không có nút này */}
+                                    {/* member và admin: rời nhóm. Owner: không có nút này */}
                                     {isGroup && !isOwner && (
                                         <button
                                             onClick={handleLeave}
@@ -407,7 +406,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                                             <LogOut size={14} /> Rời nhóm
                                         </button>
                                     )}
-                                    {/* Owner only: giải tán nhóm */}
+                                    {/* owner only: giải tán nhóm */}
                                     {isGroup && isOwner && (
                                         <button
                                             onClick={handleDisband}
@@ -435,7 +434,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                             </div>
                         )}
 
-                        {/* MEDIA TAB */}
+                        {/* media tab */}
                         {tab === "media" && (
                             <div className="p-3">
                                 {media.length === 0 ? (
@@ -474,7 +473,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                             </div>
                         )}
 
-                        {/* FILE TAB */}
+                        {/* file tab */}
                         {tab === "file" && (
                             <div className="p-3 space-y-1">
                                 {files.length === 0 ? (
@@ -517,7 +516,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                             </div>
                         )}
 
-                        {/* LINK TAB */}
+                        {/* link tab */}
                         {tab === "link" && (
                             <div className="p-3 space-y-2">
                                 {links.length === 0 ? (
@@ -560,10 +559,10 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                             </div>
                         )}
 
-                        {/* MEMBERS TAB */}
+                        {/* members tab */}
                         {tab === "members" && isGroup && (
                             <div className="p-3 space-y-1">
-                                {/* Add member button */}
+                                {/* add member button */}
                                 <button
                                     onClick={() => setIsAddMemberOpen(true)}
                                     className="w-full flex items-center justify-center gap-2 p-2.5 mb-3 bg-blue-50 hover:bg-blue-100/80 border border-dashed border-blue-300 hover:border-blue-400 rounded-xl text-xs font-bold text-blue-600 transition-all shadow-sm"
@@ -671,7 +670,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                                         );
                                     },
                                 )}
-                                {/* Pending requests section */}
+                                {/* pending requests section */}
                                 {isPendingLoading ? (
                                     <div className="flex justify-center py-4">
                                         <Loader2 className="animate-spin text-orange-400" size={16} />
@@ -711,7 +710,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                                                                     try {
                                                                         await conversationService.handleJoinRequest(conversationId, req._id, "accept");
                                                                         toast.success(`Đã chấp nhận ${req.userId?.name}`);
-                                                                        // Xóa khỏi list pending ngay lập tức (optimistic)
+                                                                        // xóa khỏi list pending ngay lập tức (optimistic)
                                                                         setPendingRequests(prev => prev.filter(r => r._id !== req._id));
                                                                         onRefresh?.(); // socket group_request_handled sẽ broadcast cho tất cả
                                                                     } catch { toast.error("Thao tác thất bại"); }
@@ -725,7 +724,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                                                                     try {
                                                                         await conversationService.handleJoinRequest(conversationId, req._id, "reject");
                                                                         toast.success("Đã từ chối");
-                                                                        // Xóa khỏi list pending ngay lập tức (optimistic)
+                                                                        // xóa khỏi list pending ngay lập tức (optimistic)
                                                                         setPendingRequests(prev => prev.filter(r => r._id !== req._id));
                                                                     } catch { toast.error("Thao tác thất bại"); }
                                                                 }}
@@ -743,7 +742,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                             </div>
                         )}
 
-                        {/* PINS TAB */}
+                        {/* pins tab */}
                         {tab === "pins" && (
                             <div className="p-3 space-y-2">
                                 {pins.length === 0 ? (
