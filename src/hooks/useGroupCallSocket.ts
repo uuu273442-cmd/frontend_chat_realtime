@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../context/SocketContext';
-import type { CallType } from './useCallSocket';
 
 export interface GroupCallParticipant {
   userId: string;
@@ -10,15 +9,12 @@ export interface GroupCallParticipant {
 }
 
 interface UseGroupCallSocketOptions {
-  onStarted: (payload: { callId: string; conversationId: string; hostId: string; callType: CallType }) => void;
+  onStarted: (payload: { callId: string; conversationId: string; hostId: string }) => void;
   onJoined: (payload: { callId: string; userId: string; userInfo: { name: string; avatar?: string } }) => void;
   onLeft:   (payload: { callId: string; userId: string }) => void;
   onEnded:  (payload: { callId: string; conversationId: string }) => void;
-  // Danh sách participants hiện tại emit riêng cho user mới join
   onParticipants?: (payload: { callId: string; existingParticipants: { userId: string; name: string; avatar?: string }[] }) => void;
-  // Conversation đã có call đang chạy — redirect sang callId thật
-  onRedirect?: (payload: { callId: string; conversationId: string; hostId: string; callType: CallType }) => void;
-  // WebRTC signaling reuse từ 1-1
+  onRedirect?: (payload: { callId: string; conversationId: string; hostId: string }) => void;
   onOffer:        (payload: { callId: string; fromUserId: string; sdp: RTCSessionDescriptionInit }) => void;
   onAnswer:       (payload: { callId: string; fromUserId: string; sdp: RTCSessionDescriptionInit }) => void;
   onIceCandidate: (payload: { callId: string; fromUserId: string; candidate: RTCIceCandidateInit }) => void;
@@ -29,8 +25,8 @@ export const useGroupCallSocket = (options: UseGroupCallSocketOptions) => {
   const optsRef = useRef(options);
   useEffect(() => { optsRef.current = options; });
 
-  const startGroupCall = useCallback((conversationId: string, callType: CallType) => {
-    socket?.emit('group_call_start', { conversationId, callType });
+  const startGroupCall = useCallback((conversationId: string) => {
+    socket?.emit('group_call_start', { conversationId });
   }, [socket]);
 
   const joinGroupCall = useCallback((callId: string) => {
@@ -45,7 +41,7 @@ export const useGroupCallSocket = (options: UseGroupCallSocketOptions) => {
     socket?.emit('group_call_end', { callId });
   }, [socket]);
 
-  // Reuse signaling events từ 1-1 call (BE dùng chung)
+  // tín hiệu webrtc dùng chung với gọi 1-1
   const sendOffer = useCallback((callId: string, targetUserId: string, sdp: RTCSessionDescriptionInit) => {
     socket?.emit('call_offer', { callId, targetUserId, sdp });
   }, [socket]);

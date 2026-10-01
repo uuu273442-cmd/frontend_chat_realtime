@@ -1,29 +1,19 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  Phone, PhoneOff, PhoneMissed, Video, VideoOff,
-  Mic, MicOff, Volume2, VolumeX, Loader2,
-} from 'lucide-react';
-import { useCallSocket } from '../../hooks/useCallSocket';
-import type { CallType } from '../../hooks/useCallSocket';
-import { callService } from '../../services/callService';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useCallSocket } from '../../hooks/useCallSocket';
+import { callService } from '../../services/callService';
+import { PeerConnection, getMicStream, stopStream, formatDuration } from '../../utils/webrtc';
+import { CallBackground, CallButton } from './CallParts';
 
-// Nếu không kết nối được sau chừng này thì coi như thất bại thay vì để màn
-// hình "Đang kết nối..." quay mãi. Đây là nguyên nhân của lỗi "gọi giữa hai
-// mạng khác nhau cứ quay rồi treo": khi chỉ có STUN mà không có TURN, hai máy
-// ở hai mạng khác nhau (ví dụ 2 nhà mạng 4G khác nhau) nhiều khi không thể tự
-// kết nối trực tiếp được, và trình duyệt không phải lúc nào cũng tự chuyển
-// trạng thái sang "failed" — nó có thể đứng ở "checking" vô thời hạn.
-const CONNECT_TIMEOUT_MS = 20_000;
+// quá thời gian này mà chưa nghe được nhau thì báo lỗi
+const CONNECT_TIMEOUT_MS = 30_000;
+// mạng chập chờn: chờ chừng này rồi mới thử nối lại
+const DISCONNECT_GRACE_MS = 4_000;
+// số lần thử nối lại đường truyền (ice restart)
+const MAX_ICE_RESTART = 2;
 
-interface IncomingInfo {
-  callId: string;
-  callerId: string;
-  callerName: string;
-  callerAvatar?: string | null;
-  callType: CallType;
-  conversationId: string;
-}
+type Phase = 'calling' | 'incoming' | 'connecting' | 'connected' | 'ended';
 
 interface CallModalProps {
   outgoing?: {
@@ -31,579 +21,435 @@ interface CallModalProps {
     calleeName: string;
     calleeAvatar?: string | null;
     conversationId: string;
-    callType: CallType;
   };
-  incoming?: IncomingInfo;
+  incoming?: {
+    callId: string;
+    callerId: string;
+    callerName: string;
+    callerAvatar?: string | null;
+    conversationId: string;
+  };
   onClose: () => void;
 }
 
-type Phase = 'calling' | 'incoming' | 'connecting' | 'connected' | 'ended';
-
-// ─── WebRTC Manager ──────────────────────────────────────────────────────────
-// Tách riêng ra ngoài component để tránh stale closure hoàn toàn
-class RTCManager {
-  private pc: RTCPeerConnection | null = null;
-  private stream: MediaStream | null = null;
-  private remoteStream: MediaStream | null = null;
-  private pendingCandidates: RTCIceCandidateInit[] = [];
-  private remoteDescSet = false;
-  private onTrackCb: ((s: MediaStream) => void) | null = null;
-
-  // Danh sách STUN/TURN được nạp từ backend trước khi tạo peer connection —
-  // xem setIceServers(). Có một danh sách STUN mặc định phòng khi chưa nạp kịp.
-  private iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ];
-
-  setIceServers(servers: RTCIceServer[]) {
-    if (servers.length) this.iceServers = servers;
-  }
-
-  async getStream(callType: CallType): Promise<MediaStream | null> {
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: callType === 'video',
-      });
-      return this.stream;
-    } catch {
-      return null;
-    }
-  }
-
-  createPeer(
-    onIce: (c: RTCIceCandidateInit) => void,
-    onTrack: (stream: MediaStream) => void,
-    onStateChange: (state: RTCPeerConnectionState) => void,
-  ): RTCPeerConnection {
-    // Cờ debug bật bằng tay trong console trình duyệt:
-    //   localStorage.setItem('ice_transport_policy', 'relay')
-    // để ép mọi kết nối đi qua TURN (không cho thử kết nối trực tiếp qua
-    // STUN nữa) — dùng khi cần xác định chắc chắn lỗi có phải do thiếu TURN
-    // hay không. Xoá key này (hoặc set về 'all') để quay lại bình thường.
-    let iceTransportPolicy: RTCIceTransportPolicy = 'all';
-    try {
-      if (window.localStorage.getItem('ice_transport_policy') === 'relay') {
-        iceTransportPolicy = 'relay';
-      }
-    } catch {
-      // localStorage có thể bị chặn (chế độ ẩn danh) — bỏ qua, dùng mặc định
-    }
-
-    this.pc = new RTCPeerConnection({ iceServers: this.iceServers, iceTransportPolicy });
-
-    this.stream?.getTracks().forEach(t => this.pc!.addTrack(t, this.stream!));
-
-    this.onTrackCb = onTrack;
-    this.pc.ontrack = (e) => {
-      if (e.streams?.[0]) {
-        this.remoteStream = e.streams[0];
-        this.onTrackCb?.(e.streams[0]);
-      }
-    };
-
-    this.pc.onicecandidate = (e) => {
-      if (e.candidate) onIce(e.candidate.toJSON());
-    };
-
-    this.pc.onconnectionstatechange = () => {
-      if (this.pc) onStateChange(this.pc.connectionState);
-    };
-
-    return this.pc;
-  }
-
-  async setRemoteDesc(sdp: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.pc) return;
-    await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    this.remoteDescSet = true;
-    // Flush tất cả candidates đã buffer
-    for (const c of this.pendingCandidates) {
-      await this.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
-    }
-    this.pendingCandidates = [];
-  }
-
-  async addCandidate(c: RTCIceCandidateInit): Promise<void> {
-    if (!this.pc) return;
-    if (!this.remoteDescSet) {
-      // Buffer lại — remote desc chưa sẵn
-      this.pendingCandidates.push(c);
-      return;
-    }
-    await this.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
-  }
-
-  async createOffer(): Promise<RTCSessionDescriptionInit | null> {
-    if (!this.pc) return null;
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    return offer;
-  }
-
-  async createAnswer(): Promise<RTCSessionDescriptionInit | null> {
-    if (!this.pc) return null;
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    return answer;
-  }
-
-  getLocalStream(): MediaStream | null { return this.stream; }
-  getRemoteStream(): MediaStream | null { return this.remoteStream; }
-  // Retry attach remote stream nếu ref chưa sẵn lúc onTrack chạy
-  retryRemoteStream(): void {
-    if (this.remoteStream && this.onTrackCb) {
-      this.onTrackCb(this.remoteStream);
-    }
-  }
-
-  toggleAudio(muted: boolean) {
-    this.stream?.getAudioTracks().forEach(t => { t.enabled = !muted; });
-  }
-
-  toggleVideo(off: boolean) {
-    this.stream?.getVideoTracks().forEach(t => { t.enabled = !off; });
-  }
-
-  destroy() {
-    this.stream?.getTracks().forEach(t => t.stop());
-    this.stream = null;
-    this.remoteStream = null;
-    this.onTrackCb = null;
-    this.pc?.close();
-    this.pc = null;
-    this.pendingCandidates = [];
-    this.remoteDescSet = false;
-  }
-}
-
-// ─── Component ───────────────────────────────────────────────────────────────
 const CallModal: React.FC<CallModalProps> = ({ outgoing, incoming, onClose }) => {
-  const [phase, setPhase] = useState<Phase>(outgoing ? 'calling' : 'incoming');
-  const [callType] = useState<CallType>(outgoing?.callType ?? incoming?.callType ?? 'voice');
+  const isCaller = !!outgoing;
+
+  const [phase, setPhase] = useState<Phase>(isCaller ? 'calling' : 'incoming');
   const [duration, setDuration] = useState(0);
-  const [isMuted, setIsMuted]     = useState(false);
-  const [isCamOff, setIsCamOff]   = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOff, setIsSpeakerOff] = useState(false);
 
-  const localVideoRef  = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement>(null); // audio riêng cho voice call
-  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Dùng ref để giữ state không bị stale trong socket callbacks
-  const rtc           = useRef(new RTCManager());
-  const callIdRef     = useRef('');
+  // dùng ref để callback socket luôn đọc được giá trị mới nhất
+  const phaseRef = useRef<Phase>(isCaller ? 'calling' : 'incoming');
+  const callIdRef = useRef(incoming?.callId ?? '');
   const remoteUserRef = useRef(outgoing?.calleId ?? incoming?.callerId ?? '');
-  const phaseRef      = useRef<Phase>(outgoing ? 'calling' : 'incoming');
-  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const peerRef = useRef<PeerConnection | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const speakerOffRef = useRef(false);
+  const earlyCandidates = useRef<RTCIceCandidateInit[]>([]);
+  const pendingOffer = useRef<RTCSessionDescriptionInit | null>(null);
+  const restartCount = useRef(0);
+  const cancelRequested = useRef(false);
+  const closedRef = useRef(false);
+  const startedRef = useRef(false);
+  const mountedRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const durationTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Tải danh sách STUN/TURN ngay khi modal mở — xong trước khi cần tạo peer
-  // connection (lúc bắt máy/nhận offer) nên không làm chậm thời điểm đó.
-  useEffect(() => {
-    callService.getIceServers().then((servers) => rtc.current.setIceServers(servers));
-  }, []);
-
-  const clearConnectTimeout = () => {
-    if (connectTimeoutRef.current) {
-      clearTimeout(connectTimeoutRef.current);
-      connectTimeoutRef.current = null;
-    }
-  };
-
-  // Bắt đầu đếm ngược khi vào trạng thái "connecting" — nếu WebRTC không bao
-  // giờ báo "failed" (một số trình duyệt/tình huống mạng không tự báo), hết
-  // giờ này thì tự coi là thất bại, dọn dẹp và đóng modal thay vì treo mãi.
-  const startConnectTimeout = () => {
-    clearConnectTimeout();
-    connectTimeoutRef.current = setTimeout(() => {
-      if (phaseRef.current !== 'connected') {
-        toast.error('Không thể kết nối cuộc gọi — vui lòng thử lại');
-        const cid = callIdRef.current;
-        if (cid) endCall(cid);
-        cleanup();
-        setPhaseSync('ended');
-        setTimeout(onClose, 1200);
-      }
-    }, CONNECT_TIMEOUT_MS);
-  };
+  useEffect(() => { onCloseRef.current = onClose; });
 
   const setPhaseSync = (p: Phase) => { phaseRef.current = p; setPhase(p); };
 
-  const startTimer = () => {
-    timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+  // bỏ qua sự kiện của cuộc gọi khác
+  const isCurrent = (id?: string) => !id || !callIdRef.current || id === callIdRef.current;
+
+  // ─── dọn dẹp ───────────────────────────────────────────────────────────
+  const clearTimers = () => {
+    if (durationTimer.current) clearInterval(durationTimer.current);
+    if (connectTimer.current) clearTimeout(connectTimer.current);
+    if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
+    durationTimer.current = connectTimer.current = disconnectTimer.current = null;
   };
 
-  // Khi phase chuyển sang connected: attach stream vào elements
-  // Audio tự play qua remoteVideoRef (autoPlay), video call cần set srcObject
-  useEffect(() => {
-    if (phase !== 'connected') return;
-    // Small delay để đảm bảo video elements đã mount
-    const t = setTimeout(() => {
-      const rs = rtc.current.getRemoteStream();
-      const ls = rtc.current.getLocalStream();
-      if (rs) {
-        // Video call: dùng video element
-        if (callType === 'video' && remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = rs;
-        }
-        // Voice call & video call: audio element riêng để đảm bảo audio play
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = rs;
-          remoteAudioRef.current.play().catch(() => {});
-        }
-      }
-      if (ls && callType === 'video' && localVideoRef.current) {
-        localVideoRef.current.srcObject = ls;
-      }
-    }, 150);
-    return () => clearTimeout(t);
-  }, [phase]);
-
-  const cleanup = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    clearConnectTimeout();
-    rtc.current.destroy();
+  const teardown = useCallback(() => {
+    clearTimers();
+    peerRef.current?.close();
+    peerRef.current = null;
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.srcObject = null;
+    }
   }, []);
 
-  useEffect(() => () => cleanup(), [cleanup]);
+  // dọn dẹp rồi đóng modal sau một lúc
+  const finish = (delay = 1000) => {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    teardown();
+    setPhaseSync('ended');
+    setTimeout(() => onCloseRef.current(), delay);
+  };
 
-  const formatDur = (s: number) =>
-    `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+  // chỉ dọn khi thật sự bị gỡ (StrictMode giả lập gỡ rồi gắn lại ngay)
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      setTimeout(() => { if (!mountedRef.current) teardown(); }, 0);
+    };
+  }, [teardown]);
 
-  // ─── Socket ─────────────────────────────────────────────────────────────
+  // ─── hẹn giờ ───────────────────────────────────────────────────────────
+  const startConnectTimeout = () => {
+    if (connectTimer.current) clearTimeout(connectTimer.current);
+    connectTimer.current = setTimeout(() => {
+      if (phaseRef.current === 'connected') return;
+      toast.error('Không thể kết nối cuộc gọi, vui lòng thử lại');
+      if (callIdRef.current) endCall(callIdRef.current);
+      finish();
+    }, CONNECT_TIMEOUT_MS);
+  };
+
+  const startDurationTimer = () => {
+    if (durationTimer.current) return;
+    durationTimer.current = setInterval(() => setDuration((d) => d + 1), 1000);
+  };
+
+  // ─── kết nối webrtc ────────────────────────────────────────────────────
+  const attachRemote = (stream: MediaStream) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.srcObject = stream;
+    audio.muted = speakerOffRef.current;
+    audio.play().catch(() => {});
+  };
+
+  // bên gọi chủ động thử nối lại đường truyền, bên nghe chờ offer mới
+  const tryRestart = async () => {
+    if (closedRef.current || !isCaller) return;
+    const cid = callIdRef.current;
+    const peer = peerRef.current;
+    if (!cid || !peer) return;
+
+    if (restartCount.current >= MAX_ICE_RESTART) {
+      toast.error('Mất kết nối cuộc gọi');
+      endCall(cid);
+      finish();
+      return;
+    }
+    restartCount.current += 1;
+    const offer = await peer.createOffer(true);
+    sendOffer(cid, remoteUserRef.current, offer);
+  };
+
+  const handleState = (state: RTCPeerConnectionState) => {
+    if (closedRef.current) return;
+
+    if (state === 'connected') {
+      if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
+      if (connectTimer.current) clearTimeout(connectTimer.current);
+      restartCount.current = 0;
+      setPhaseSync('connected');
+      startDurationTimer();
+      audioRef.current?.play().catch(() => {});
+      return;
+    }
+
+    if (state === 'disconnected') {
+      if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
+      disconnectTimer.current = setTimeout(() => { tryRestart(); }, DISCONNECT_GRACE_MS);
+      return;
+    }
+
+    if (state === 'failed') {
+      if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
+      tryRestart();
+    }
+  };
+
+  const createPeer = (callId: string, targetId: string, iceServers: RTCIceServer[]) => {
+    const stream = streamRef.current;
+    if (!stream) return null;
+
+    const peer = new PeerConnection(iceServers, stream, {
+      onIce: (c) => sendIceCandidate(callId, targetId, c),
+      onTrack: attachRemote,
+      onState: handleState,
+    });
+    peerRef.current = peer;
+
+    // candidate đến sớm hơn peer thì thêm vào bây giờ
+    const early = earlyCandidates.current;
+    earlyCandidates.current = [];
+    early.forEach((c) => peer.addCandidate(c));
+    return peer;
+  };
+
+  const answerOffer = async (callId: string, fromUserId: string, sdp: RTCSessionDescriptionInit) => {
+    const peer = peerRef.current;
+    if (!peer) {
+      pendingOffer.current = sdp;
+      return;
+    }
+    const answer = await peer.acceptOffer(sdp);
+    sendAnswer(callId, fromUserId, answer);
+  };
+
+  // ─── socket ────────────────────────────────────────────────────────────
   const { initiateCall, acceptCall, rejectCall, endCall, cancelCall,
     sendOffer, sendAnswer, sendIceCandidate } = useCallSocket({
 
-    onStarted: ({ callId: cid }) => {
-      callIdRef.current = cid;
+    onStarted: ({ callId }) => {
+      callIdRef.current = callId;
+      // người gọi đã bấm huỷ trước khi có callId
+      if (cancelRequested.current) {
+        cancelCall(callId);
+        finish(0);
+      }
     },
 
-    onIncoming: () => {}, // handled by ChatPage
+    onIncoming: () => {}, // chatpage xử lý
 
-    onAccepted: async ({ callId: cid }) => {
-      if (phaseRef.current !== 'calling') return;
-      callIdRef.current = cid;
+    // bên gọi: người nhận đã bắt máy, tạo offer
+    onAccepted: async ({ callId }) => {
+      if (phaseRef.current !== 'calling' || !isCurrent(callId)) return;
+      callIdRef.current = callId;
       setPhaseSync('connecting');
       startConnectTimeout();
 
-      // Chờ danh sách STUN/TURN nạp xong TRƯỚC khi tạo peer connection.
-      // Trước đây danh sách này chỉ được nạp "cho có" lúc mở modal (không
-      // chờ), nên nếu mạng chậm hoặc backend đang cold-start, bên gọi có
-      // thể tạo peer connection ngay khi callee bắt máy — tức là TRƯỚC khi
-      // danh sách TURN kịp tải về — và cuộc gọi rơi vào cảnh chỉ có STUN,
-      // dễ thất bại khi 2 máy ở 2 mạng khác nhau. await ở đây đảm bảo luôn
-      // dùng đúng danh sách đầy đủ, dù có phải chờ thêm một chút.
-      rtc.current.setIceServers(await callService.getIceServers());
-
-      const stream = await rtc.current.getStream(callType);
-      if (!stream) {
-        toast.error('Không thể truy cập micro/camera');
-        // Báo cho phía callee biết cuộc gọi không thể tiếp tục thay vì im
-        // lặng bỏ cuộc — nếu không, bên kia sẽ phải tự chờ hết 20 giây
-        // connect-timeout mới biết cuộc gọi thất bại.
-        endCall(cid);
-        cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1200);
-        return;
-      }
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-
-      rtc.current.createPeer(
-        (c) => sendIceCandidate(cid, remoteUserRef.current, c),
-        (s) => {
-          // Dùng ref trực tiếp, nếu chưa mount thì rtc lưu lại để retry
-          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = s;
-        },
-        (state) => {
-          if (state === 'connected') {
-            clearConnectTimeout();
-            setPhaseSync('connected');
-            startTimer();
-            // Retry attach stream sau khi video element render
-            setTimeout(() => {
-              rtc.current.retryRemoteStream();
-            }, 100);
-          }
-          if (state === 'failed' || state === 'disconnected') {
-            clearConnectTimeout();
-            toast.error('Kết nối bị ngắt');
-            cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1500);
-          }
-        },
-      );
-
-      const ls = rtc.current.getLocalStream();
-      if (ls && localVideoRef.current) localVideoRef.current.srcObject = ls;
-
-      const offer = await rtc.current.createOffer();
-      if (offer) sendOffer(cid, remoteUserRef.current, offer);
+      const iceServers = await callService.getIceServers();
+      const peer = createPeer(callId, remoteUserRef.current, iceServers);
+      if (!peer) return;
+      const offer = await peer.createOffer();
+      sendOffer(callId, remoteUserRef.current, offer);
     },
 
-    onRejected: ({ reasons }) => {
-      toast(reasons ? `Bị từ chối: ${reasons}` : 'Cuộc gọi bị từ chối', { icon: '📵' });
-      cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1200);
+    onRejected: ({ callId, reasons }) => {
+      if (!isCurrent(callId)) return;
+      toast(reasons ? `Cuộc gọi bị từ chối: ${reasons}` : 'Cuộc gọi bị từ chối', { icon: '📵' });
+      finish();
     },
 
-    onEnded: () => {
-      cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1200);
+    onEnded: ({ callId }) => {
+      if (!isCurrent(callId)) return;
+      finish();
     },
 
-    onCancelled: () => {
-      toast('Cuộc gọi bị huỷ', { icon: '📵' });
-      cleanup(); onClose();
+    onCancelled: ({ callId }) => {
+      if (!isCurrent(callId)) return;
+      finish(0);
     },
 
     onBusy: () => {
       toast.error('Người dùng đang bận');
-      cleanup(); onClose();
+      finish(0);
     },
 
-    onOffer: async ({ callId: cid, fromUserId, sdp }) => {
-      if (phaseRef.current !== 'incoming' && phaseRef.current !== 'connecting') return;
-      callIdRef.current = cid;
+    // bên nghe: nhận offer rồi trả answer (cũng dùng khi bên gọi thử nối lại)
+    onOffer: async ({ callId, fromUserId, sdp }) => {
+      if (!isCurrent(callId)) return;
+      callIdRef.current = callId;
       remoteUserRef.current = fromUserId;
-      setPhaseSync('connecting');
-      startConnectTimeout();
-
-      // Xem chú thích ở onAccepted phía trên — cùng lý do phải chờ (await)
-      // danh sách ICE server trước khi tạo peer connection.
-      rtc.current.setIceServers(await callService.getIceServers());
-
-      const stream = await rtc.current.getStream(callType);
-      if (!stream) {
-        toast.error('Không thể truy cập micro/camera');
-        endCall(cid);
-        cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1200);
-        return;
-      }
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-
-      rtc.current.createPeer(
-        (c) => sendIceCandidate(cid, fromUserId, c),
-        (s) => {
-          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = s;
-        },
-        (state) => {
-          if (state === 'connected') {
-            clearConnectTimeout();
-            setPhaseSync('connected');
-            startTimer();
-            setTimeout(() => {
-              rtc.current.retryRemoteStream();
-            }, 100);
-          }
-          if (state === 'failed' || state === 'disconnected') {
-            clearConnectTimeout();
-            toast.error('Kết nối bị ngắt');
-            cleanup(); setPhaseSync('ended'); setTimeout(onClose, 1500);
-          }
-        },
-      );
-
-      const ls2 = rtc.current.getLocalStream();
-      if (ls2 && localVideoRef.current) localVideoRef.current.srcObject = ls2;
-
-      await rtc.current.setRemoteDesc(sdp);
-      const answer = await rtc.current.createAnswer();
-      if (answer) sendAnswer(cid, fromUserId, answer);
+      await answerOffer(callId, fromUserId, sdp);
     },
 
-    onAnswer: async ({ sdp }) => {
-      await rtc.current.setRemoteDesc(sdp);
-      // connectionState change sẽ handle setPhase('connected')
+    onAnswer: async ({ callId, sdp }) => {
+      if (!isCurrent(callId)) return;
+      await peerRef.current?.acceptAnswer(sdp);
     },
 
-    onIceCandidate: async ({ candidate }) => {
-      await rtc.current.addCandidate(candidate);
+    onIceCandidate: async ({ callId, candidate }) => {
+      if (!isCurrent(callId)) return;
+      if (peerRef.current) await peerRef.current.addCandidate(candidate);
+      else earlyCandidates.current.push(candidate);
     },
   });
 
-  // ─── Mount ───────────────────────────────────────────────────────────────
+  // ─── bên gọi: xin micro rồi mới gọi ────────────────────────────────────
   useEffect(() => {
-    if (outgoing) {
-      initiateCall(outgoing.calleId, outgoing.conversationId, outgoing.callType);
-    }
+    if (!outgoing || startedRef.current) return;
+    startedRef.current = true;
+
+    (async () => {
+      const [stream] = await Promise.all([getMicStream(), callService.getIceServers()]);
+      if (closedRef.current) { stopStream(stream); return; }
+      if (!stream) {
+        toast.error('Không truy cập được micro, hãy cấp quyền micro cho trình duyệt');
+        finish(0);
+        return;
+      }
+      streamRef.current = stream;
+      initiateCall(outgoing.calleId, outgoing.conversationId);
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Actions ─────────────────────────────────────────────────────────────
-  const handleAccept = () => {
-    const cid = incoming?.callId ?? '';
-    if (!cid) return;
-    acceptCall(cid);
-    callIdRef.current = cid;
-    remoteUserRef.current = incoming?.callerId ?? '';
+  // bên nhận: tải sẵn ice server trong lúc đổ chuông
+  useEffect(() => {
+    if (!isCaller) callService.getIceServers();
+  }, [isCaller]);
+
+  // ─── thao tác ──────────────────────────────────────────────────────────
+  // bên nhận: chuẩn bị xong micro và peer rồi mới báo đã bắt máy
+  // để không bỏ lỡ offer và candidate đầu tiên của bên gọi
+  const handleAccept = async () => {
+    if (!incoming || phaseRef.current !== 'incoming') return;
+    const cid = incoming.callId;
     setPhaseSync('connecting');
+
+    const [iceServers, stream] = await Promise.all([callService.getIceServers(), getMicStream()]);
+    if (closedRef.current) { stopStream(stream); return; }
+    if (!stream) {
+      toast.error('Không truy cập được micro, hãy cấp quyền micro cho trình duyệt');
+      rejectCall(cid, 'Không có micro');
+      finish(0);
+      return;
+    }
+
+    streamRef.current = stream;
+    createPeer(cid, incoming.callerId, iceServers);
+    startConnectTimeout();
+    acceptCall(cid);
+
+    if (pendingOffer.current) {
+      const sdp = pendingOffer.current;
+      pendingOffer.current = null;
+      await answerOffer(cid, incoming.callerId, sdp);
+    }
   };
 
   const handleReject = () => {
-    const cid = callIdRef.current || incoming?.callId || '';
-    if (cid) rejectCall(cid);
-    cleanup(); onClose();
+    if (incoming) rejectCall(incoming.callId);
+    finish(0);
   };
 
   const handleEnd = () => {
     const cid = callIdRef.current;
-    if (phaseRef.current === 'calling') { if (cid) cancelCall(cid); }
-    else { if (cid) endCall(cid); }
-    cleanup(); setPhaseSync('ended'); setTimeout(onClose, 800);
+    if (phaseRef.current === 'calling') {
+      if (cid) {
+        cancelCall(cid);
+      } else {
+        // chưa có callId, chờ server trả về rồi huỷ
+        cancelRequested.current = true;
+        setTimeout(() => finish(0), 3000);
+        return;
+      }
+    } else if (cid) {
+      endCall(cid);
+    }
+    finish(300);
   };
 
-  // ─── Toggles ─────────────────────────────────────────────────────────────
   const toggleMute = () => {
-    rtc.current.toggleAudio(!isMuted);
-    setIsMuted(m => !m);
+    streamRef.current?.getAudioTracks().forEach((t) => { t.enabled = isMuted; });
+    setIsMuted((m) => !m);
   };
-  const toggleCam = () => {
-    rtc.current.toggleVideo(!isCamOff);
-    setIsCamOff(c => !c);
-  };
+
   const toggleSpeaker = () => {
-    if (remoteVideoRef.current) remoteVideoRef.current.muted = !isSpeakerOff;
-    setIsSpeakerOff(s => !s);
+    const off = !isSpeakerOff;
+    speakerOffRef.current = off;
+    if (audioRef.current) audioRef.current.muted = off;
+    setIsSpeakerOff(off);
   };
 
-  // ─── Display ─────────────────────────────────────────────────────────────
-  const displayName   = outgoing?.calleeName ?? incoming?.callerName ?? 'Người dùng';
-  const displayAvatar = outgoing?.calleeAvatar ?? incoming?.callerAvatar;
+  // ─── giao diện ─────────────────────────────────────────────────────────
+  const name = outgoing?.calleeName ?? incoming?.callerName ?? 'Người dùng';
+  const avatar = outgoing?.calleeAvatar ?? incoming?.callerAvatar ?? null;
 
-  const phaseLabel: Record<Phase, string> = {
-    calling:    'Đang gọi...',
-    incoming:   `Cuộc gọi ${callType === 'video' ? 'video' : 'thoại'} đến`,
+  const statusText: Record<Phase, string> = {
+    calling: 'Đang gọi...',
+    incoming: 'Cuộc gọi thoại đến',
     connecting: 'Đang kết nối...',
-    connected:  formatDur(duration),
-    ended:      'Cuộc gọi kết thúc',
+    connected: formatDuration(duration),
+    ended: 'Cuộc gọi đã kết thúc',
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const ringing = phase === 'calling' || phase === 'incoming';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Hidden audio element — đảm bảo remote audio luôn play */}
-      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4">
+      <audio ref={audioRef} autoPlay playsInline className="hidden" />
 
-      <div className="relative w-full max-w-sm mx-4 rounded-3xl overflow-hidden shadow-2xl bg-gradient-to-b from-gray-900 to-gray-800 text-white">
+      <div className="relative flex h-full w-full flex-col overflow-hidden text-white shadow-2xl sm:h-[620px] sm:max-w-[380px] sm:rounded-3xl">
+        <CallBackground avatar={avatar} />
 
-        {callType === 'video' && phase === 'connected' && (
-          <video ref={remoteVideoRef} autoPlay playsInline
-            className="absolute inset-0 w-full h-full object-cover opacity-80" />
-        )}
+        <p className="relative z-10 pt-8 text-center text-sm font-medium text-white/80">
+          Cuộc gọi thoại
+        </p>
 
-        <div className="relative z-10 flex flex-col items-center px-6 pt-12 pb-8 min-h-[420px]">
+        {/* avatar, tên, trạng thái */}
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6">
+          <div className="relative mb-6">
+            {ringing && (
+              <>
+                <span className="absolute inset-0 animate-ping rounded-full bg-white/25" />
+                <span className="absolute -inset-4 animate-pulse rounded-full bg-white/10" />
+              </>
+            )}
+            {avatar ? (
+              <img
+                src={avatar}
+                alt={name}
+                className="relative h-32 w-32 rounded-full border-4 border-white/40 object-cover shadow-xl"
+              />
+            ) : (
+              <div className="relative flex h-32 w-32 items-center justify-center rounded-full border-4 border-white/40 bg-white/20 text-5xl font-bold shadow-xl">
+                {name.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
 
-          {/* Avatar lớn — chỉ hiện khi CHƯA có video để nhìn (gọi thoại, hoặc
-              gọi video nhưng chưa kết nối). Khi video đã kết nối, khuôn mặt
-              thật đã hiện trên toàn màn hình rồi nên avatar tròn không cần
-              nữa — trước đây avatar này vẫn hiện đè lên giữa video, che mất
-              một phần khuôn mặt người gọi và góc video nhỏ (PIP). */}
-          {!(callType === 'video' && phase === 'connected') && (
-            <div className="relative mb-4">
-              {displayAvatar ? (
-                <img src={displayAvatar} alt={displayName}
-                  className="w-24 h-24 rounded-full object-cover border-4 border-white/20 shadow-xl" />
-              ) : (
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl font-bold shadow-xl border-4 border-white/20">
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
-              {(phase === 'calling' || phase === 'incoming') && (
-                <>
-                  <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping" />
-                  <div className="absolute -inset-3 rounded-full border border-white/15 animate-ping [animation-delay:300ms]" />
-                </>
-              )}
-            </div>
-          )}
+          <h2 className="max-w-full truncate text-2xl font-semibold">{name}</h2>
+          <p className="mt-2 text-base text-white/80">{statusText[phase]}</p>
+        </div>
 
-          {/* Khi video đã kết nối: thay avatar to bằng 1 thanh nhãn nhỏ ở góc
-              trên bên trái, không che khuôn mặt trong video */}
-          {callType === 'video' && phase === 'connected' ? (
-            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1.5 flex items-center gap-1.5">
-              <span className="text-sm font-semibold">{displayName}</span>
-              <span className="text-xs text-white/70">{phaseLabel[phase]}</span>
-            </div>
-          ) : (
-            <>
-              <h2 className="text-xl font-bold mb-1">{displayName}</h2>
-              <p className="text-sm text-white/60 mb-2 flex items-center gap-1.5">
-                {callType === 'video' ? <Video size={14} /> : <Phone size={14} />}
-                {phaseLabel[phase]}
-                {phase === 'connecting' && <Loader2 size={14} className="animate-spin ml-1" />}
-              </p>
-            </>
-          )}
-
-          {callType === 'video' && phase === 'connected' && (
-            <div className="absolute bottom-28 right-4 w-24 h-32 rounded-xl overflow-hidden border-2 border-white/20 shadow-lg bg-black z-20">
-              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            </div>
-          )}
-
-          <div className="flex-1" />
-
-          {/* Controls */}
+        {/* nút điều khiển */}
+        <div className="relative z-10 px-6 pb-10 pt-4">
           {phase === 'incoming' && (
-            <div className="flex items-center justify-center gap-12 mt-4">
-              <div className="flex flex-col items-center gap-2">
-                <button onClick={handleReject}
-                  className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg transition-all active:scale-95">
-                  <PhoneMissed size={26} />
-                </button>
-                <span className="text-xs text-white/60">Từ chối</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <button onClick={handleAccept}
-                  className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center shadow-lg transition-all active:scale-95 animate-bounce">
-                  <Phone size={26} />
-                </button>
-                <span className="text-xs text-white/60">Chấp nhận</span>
-              </div>
-            </div>
-          )}
-
-          {(phase === 'calling' || phase === 'connecting') && (
-            <div className="flex flex-col items-center gap-2 mt-4">
-              <button onClick={handleEnd}
-                className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg transition-all active:scale-95">
+            <div className="flex items-start justify-center gap-16">
+              <CallButton label="Từ chối" onClick={handleReject} className="bg-red-500 hover:bg-red-600">
                 <PhoneOff size={26} />
-              </button>
-              <span className="text-xs text-white/60">{phase === 'calling' ? 'Huỷ' : 'Kết thúc'}</span>
+              </CallButton>
+              <CallButton label="Trả lời" onClick={handleAccept} className="animate-bounce bg-green-500 hover:bg-green-600">
+                <Phone size={26} />
+              </CallButton>
             </div>
           )}
 
-          {phase === 'connected' && (
-            <div className="mt-6 w-full">
-              <div className="flex justify-center gap-4 mb-6">
-                <button onClick={toggleMute}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500/80' : 'bg-white/15 hover:bg-white/25'}`}>
-                  {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-                </button>
-                <button onClick={toggleSpeaker}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isSpeakerOff ? 'bg-red-500/80' : 'bg-white/15 hover:bg-white/25'}`}>
-                  {isSpeakerOff ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                </button>
-                {callType === 'video' && (
-                  <button onClick={toggleCam}
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isCamOff ? 'bg-red-500/80' : 'bg-white/15 hover:bg-white/25'}`}>
-                    {isCamOff ? <VideoOff size={20} /> : <Video size={20} />}
-                  </button>
-                )}
-              </div>
-              <div className="flex justify-center">
-                <div className="flex flex-col items-center gap-2">
-                  <button onClick={handleEnd}
-                    className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg transition-all active:scale-95">
-                    <PhoneOff size={26} />
-                  </button>
-                  <span className="text-xs text-white/60">Kết thúc</span>
-                </div>
-              </div>
+          {phase === 'calling' && (
+            <div className="flex justify-center">
+              <CallButton label="Huỷ" onClick={handleEnd} className="bg-red-500 hover:bg-red-600">
+                <PhoneOff size={26} />
+              </CallButton>
             </div>
           )}
 
-          {phase === 'ended' && (
-            <p className="text-center text-white/50 text-sm mt-4">Cuộc gọi kết thúc</p>
+          {(phase === 'connecting' || phase === 'connected') && (
+            <div className="flex items-start justify-center gap-6">
+              <CallButton
+                label={isMuted ? 'Bật mic' : 'Tắt mic'}
+                onClick={toggleMute}
+                className={isMuted ? 'bg-white text-[#0068ff]' : 'bg-white/20 hover:bg-white/30'}
+              >
+                {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+              </CallButton>
+              <CallButton
+                label={isSpeakerOff ? 'Bật loa' : 'Tắt loa'}
+                onClick={toggleSpeaker}
+                className={isSpeakerOff ? 'bg-white text-[#0068ff]' : 'bg-white/20 hover:bg-white/30'}
+              >
+                {isSpeakerOff ? <VolumeX size={24} /> : <Volume2 size={24} />}
+              </CallButton>
+              <CallButton label="Kết thúc" onClick={handleEnd} className="bg-red-500 hover:bg-red-600">
+                <PhoneOff size={24} />
+              </CallButton>
+            </div>
           )}
         </div>
       </div>

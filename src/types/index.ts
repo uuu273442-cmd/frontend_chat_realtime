@@ -62,7 +62,7 @@ export interface Message {
   createdAt: string;
   updatedAt: string;
   callInfo?: {
-    callType: 'voice' | 'video';
+    callType: 'voice' | 'video'; // 'video' chỉ có ở tin nhắn cũ
     status: 'missed' | 'ended' | 'cancelled' | 'started';
     duration?: number;
     startedAt?: string;

@@ -10,7 +10,6 @@ import {
     Download,
     ExternalLink,
     Loader2,
-    Bell,
     BellOff,
     Shield,
     UserMinus,
@@ -31,8 +30,7 @@ type Tab =
     | "file"
     | "link"
     | "members"
-    | "pins"
-    | "announcements";
+    | "pins";
 
 interface ConversationPanelProps {
     conversationId: string;
@@ -63,9 +61,6 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
     const [files, setFiles] = useState<any[]>([]);
     const [links, setLinks] = useState<any[]>([]);
     const [pins, setPins] = useState<any[]>([]);
-    const [announcements, setAnnouncements] = useState<any[]>([]);
-    const [newAnnouncement, setNewAnnouncement] = useState("");
-    const [isPostingAnnouncement, setIsPostingAnnouncement] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [viewProfileUserId, setViewProfileUserId] = useState<
         string | null
@@ -112,7 +107,6 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
         else if (tab === "file") loadFiles();
         else if (tab === "link") loadLinks();
         else if (tab === "pins") loadPins();
-        else if (tab === "announcements") loadAnnouncements();
         else if (tab === "members") loadPendingRequests();
     }, [tab, conversationId]);
 
@@ -172,19 +166,6 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
         }
     };
 
-    const loadAnnouncements = async () => {
-        setIsLoading(true);
-        try {
-            const data =
-                await conversationService.getAnnouncements(conversationId);
-            setAnnouncements(data || []);
-        } catch {
-            toast.error("Không thể tải bản tin");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     const loadPendingRequests = async () => {
         setIsPendingLoading(true);
         try {
@@ -194,25 +175,6 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
             // Không toast — member bình thường gọi API này có thể bị lỗi auth cũ
         } finally {
             setIsPendingLoading(false);
-        }
-    };
-
-    const handlePostAnnouncement = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newAnnouncement.trim()) return;
-        setIsPostingAnnouncement(true);
-        try {
-            await conversationService.createAnnouncement(
-                conversationId,
-                newAnnouncement,
-            );
-            toast.success("Đã đăng bản tin");
-            setNewAnnouncement("");
-            loadAnnouncements();
-        } catch {
-            toast.error("Không thể đăng bản tin");
-        } finally {
-            setIsPostingAnnouncement(false);
         }
     };
 
@@ -298,7 +260,6 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
               ]
             : []),
         { key: "pins", icon: <Pin size={14} />, label: "Ghim" },
-        { key: "announcements", icon: <Bell size={14} />, label: "Bản tin" },
     ];
 
     return (
@@ -822,99 +783,6 @@ const ConversationPanel: React.FC<ConversationPanelProps> = ({
                                         </div>
                                     ))
                                 )}
-                            </div>
-                        )}
-
-                        {/* ANNOUNCEMENTS TAB */}
-                        {tab === "announcements" && (
-                            <div className="p-3 flex flex-col h-full space-y-4">
-                                {isAdmin && (
-                                    <form
-                                        onSubmit={handlePostAnnouncement}
-                                        className="space-y-2 p-3 bg-blue-50 rounded-xl border border-blue-100 shadow-sm"
-                                    >
-                                        <textarea
-                                            value={newAnnouncement}
-                                            onChange={(e) =>
-                                                setNewAnnouncement(
-                                                    e.target.value,
-                                                )
-                                            }
-                                            placeholder="Nhập nội dung bản tin nhóm..."
-                                            className="w-full text-xs p-2.5 rounded-lg border border-blue-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none min-h-[80px] bg-white transition-all"
-                                        />
-                                        <div className="flex justify-end">
-                                            <button
-                                                type="submit"
-                                                disabled={
-                                                    isPostingAnnouncement ||
-                                                    !newAnnouncement.trim()
-                                                }
-                                                className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-all flex items-center gap-1.5"
-                                            >
-                                                {isPostingAnnouncement ? (
-                                                    <Loader2
-                                                        size={12}
-                                                        className="animate-spin"
-                                                    />
-                                                ) : (
-                                                    <Bell size={12} />
-                                                )}{" "}
-                                                Đăng tin
-                                            </button>
-                                        </div>
-                                    </form>
-                                )}
-                                <div className="space-y-3">
-                                    {announcements.length === 0 ? (
-                                        <div className="py-10 text-center text-xs text-gray-400 italic">
-                                            Chưa có bản tin nào
-                                        </div>
-                                    ) : (
-                                        announcements.map(
-                                            (ann: any, i: number) => (
-                                                <div
-                                                    key={i}
-                                                    className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm relative overflow-hidden group"
-                                                >
-                                                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <Avatar
-                                                                name={
-                                                                    ann.senderId
-                                                                        ?.name
-                                                                }
-                                                                size="xs"
-                                                            />
-                                                            <div className="flex flex-col">
-                                                                <span className="text-xs font-bold text-gray-800">
-                                                                    {
-                                                                        ann
-                                                                            .senderId
-                                                                            ?.name
-                                                                    }
-                                                                </span>
-                                                                <span className="text-[9px] text-gray-400">
-                                                                    {new Date(
-                                                                        ann.createdAt,
-                                                                    ).toLocaleString()}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                        <Bell
-                                                            size={12}
-                                                            className="text-blue-500"
-                                                        />
-                                                    </div>
-                                                    <div className="text-xs text-gray-700 leading-relaxed break-words">
-                                                        {ann.content}
-                                                    </div>
-                                                </div>
-                                            ),
-                                        )
-                                    )}
-                                </div>
                             </div>
                         )}
                     </>

@@ -43,8 +43,8 @@ interface ChatAreaProps {
     activeChat: string | null;
     onClose?: () => void;
     onOpenInfo?: () => void;
-    onStartCall?: (callType: 'voice' | 'video') => void;
-    onStartGroupCall?: (callType: 'voice' | 'video') => void;
+    onStartCall?: () => void;
+    onStartGroupCall?: () => void;
     isPrivateChat?: boolean;
     isGroupChat?: boolean;
 }
@@ -92,32 +92,28 @@ const formatLastSeen = (dateStr: string | null | undefined): string | null => {
 const renderCallMessage = (
     msg: any,
     isMine: boolean,
-    onStartCall?: (type: 'voice' | 'video') => void,
-    onStartGroupCall?: (type: 'voice' | 'video') => void,
+    onStartCall?: () => void,
+    onStartGroupCall?: () => void,
 ) => {
     const status = msg.callInfo?.status as 'ended' | 'missed' | 'cancelled' | 'started' | undefined;
-    const callType = msg.callInfo?.callType as 'voice' | 'video' | undefined;
     const duration = msg.callInfo?.duration as number | undefined;
 
-    const isVideo = callType === 'video';
     const isMissed = status === 'missed';
     const isCancelled = status === 'cancelled';
     const isEnded = status === 'ended';
-    const isStarted = status === 'started'; // group call đang diễn ra
+    const isStarted = status === 'started';
 
     const Icon = isMissed
         ? PhoneMissed
         : isCancelled
         ? PhoneOff
-        : isVideo
-        ? Video
         : Phone;
 
     const statusText = {
-        ended: isVideo ? 'Cuộc gọi video nhóm' : 'Cuộc gọi thoại nhóm',
-        missed: isVideo ? 'Cuộc gọi video nhỡ' : 'Cuộc gọi thoại nhỡ',
-        cancelled: isVideo ? 'Cuộc gọi video đã huỷ' : 'Cuộc gọi thoại đã huỷ',
-        started: isVideo ? 'Cuộc gọi video nhóm đang diễn ra' : 'Cuộc gọi thoại nhóm đang diễn ra',
+        ended: 'Cuộc gọi thoại',
+        missed: 'Cuộc gọi thoại nhỡ',
+        cancelled: 'Cuộc gọi thoại đã huỷ',
+        started: 'Cuộc gọi thoại nhóm đang diễn ra',
     }[status ?? 'ended'] ?? msg.content;
 
     const iconBg = isMine
@@ -130,7 +126,6 @@ const renderCallMessage = (
 
     return (
         <div className="flex flex-col gap-2 py-0.5 min-w-[180px]">
-            {/* Icon + text */}
             <div className="flex items-center gap-2.5">
                 <div className={`p-2 rounded-full ${iconBg} flex-shrink-0`}>
                     <Icon size={15} className={iconColor} />
@@ -156,11 +151,10 @@ const renderCallMessage = (
                     ) : null}
                 </div>
             </div>
-            {/* Nút gọi lại — chỉ hiện khi là private chat và có onStartCall */}
-            {/* Nút Gọi lại (private) hoặc Tham gia (group started) */}
+            {/* gọi lại (chat riêng) hoặc tham gia (nhóm đang gọi) */}
             {isStarted && onStartGroupCall ? (
                 <button
-                    onClick={() => onStartGroupCall(callType ?? 'voice')}
+                    onClick={() => onStartGroupCall()}
                     className={`w-full py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5
                         ${isMine
                             ? 'bg-green-500/30 hover:bg-green-500/50 text-green-200'
@@ -172,14 +166,14 @@ const renderCallMessage = (
                 </button>
             ) : !isStarted && onStartCall ? (
                 <button
-                    onClick={() => onStartCall(callType ?? 'voice')}
+                    onClick={() => onStartCall()}
                     className={`w-full py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5
                         ${isMine
                             ? 'bg-white/15 hover:bg-white/25 text-white'
                             : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                         }`}
                 >
-                    {isVideo ? <Video size={12} /> : <Phone size={12} />}
+                    <Phone size={12} />
                     Gọi lại
                 </button>
             ) : null}
@@ -1101,30 +1095,20 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                     >
                         <Search size={18} />
                     </button>
-                    {/* Private chat: gọi 1-1 */}
+                    {/* gọi thoại 1-1 */}
                     {isPrivate && (
-                        <>
-                            <button
-                                onClick={() => onStartCall?.('voice')}
-                                className="p-2 text-gray-500 hover:bg-green-100 hover:text-green-600 rounded-full transition-colors"
-                                title="Gọi thoại"
-                            >
-                                <Phone size={18} />
-                            </button>
-                            <button
-                                onClick={() => onStartCall?.('video')}
-                                className="p-2 text-gray-500 hover:bg-blue-100 hover:text-blue-600 rounded-full transition-colors"
-                                title="Gọi video"
-                            >
-                                <Video size={18} />
-                            </button>
-                        </>
+                        <button
+                            onClick={() => onStartCall?.()}
+                            className="p-2 text-gray-500 hover:bg-green-100 hover:text-green-600 rounded-full transition-colors"
+                            title="Gọi thoại"
+                        >
+                            <Phone size={18} />
+                        </button>
                     )}
-                    {/* Group chat: chỉ hỗ trợ gọi thoại (xem ghi chú ở GroupCallModal.tsx
-                        và backend/gateway về lý do không có gọi video nhóm) */}
+                    {/* gọi thoại nhóm */}
                     {isGroupChat && (
                         <button
-                            onClick={() => onStartGroupCall?.('voice')}
+                            onClick={() => onStartGroupCall?.()}
                             className="p-2 text-gray-500 hover:bg-green-100 hover:text-green-600 rounded-full transition-colors"
                             title="Gọi thoại nhóm"
                         >

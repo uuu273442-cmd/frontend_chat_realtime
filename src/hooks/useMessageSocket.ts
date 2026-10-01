@@ -149,11 +149,6 @@ export const useMessageSocket = ({
             onConversationUpdate();
         });
 
-        // ── announcement_created ──
-        socket.on("announcement_created", () => {
-            onConversationUpdate();
-        });
-
         // ── Typing ──
         socket.on("user_typing", (payload: any) => {
             if (
@@ -202,7 +197,6 @@ export const useMessageSocket = ({
                     "message_unpinned",
                     "message_forwarded",
                     "mention_received",
-                    "announcement_created",
                     "user_typing",
                     "user_stopped_typing",
                     ...groupEvents,

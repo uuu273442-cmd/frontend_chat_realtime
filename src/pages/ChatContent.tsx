@@ -19,8 +19,8 @@ const ChatContent: React.FC = () => {
     } = useOutletContext<any>();
     const navigate = useNavigate();
 
-    // Derive callee info từ activeChatInfo (chỉ dùng cho private chat)
-    const handleStartCall = (callType: 'voice' | 'video') => {
+    // lấy thông tin người nhận từ hội thoại (chỉ chat riêng)
+    const handleStartCall = () => {
         if (!activeChatInfo || !activeChat || !startCall) return;
         const isPrivate = activeChatInfo.type === 'private';
         if (!isPrivate) return;
@@ -35,16 +35,14 @@ const ChatContent: React.FC = () => {
             calleeName: otherParticipant.userId.name,
             calleeAvatar: otherParticipant.userId.avatar ?? null,
             conversationId: activeChat,
-            callType,
         });
     };
 
-    const handleStartGroupCall = (callType: 'voice' | 'video') => {
+    const handleStartGroupCall = () => {
         if (!activeChatInfo || !activeChat || !startGroupCall) return;
         startGroupCall({
             conversationId: activeChat,
             conversationName: activeChatInfo.name ?? 'Cuộc gọi nhóm',
-            callType,
         });
     };
 

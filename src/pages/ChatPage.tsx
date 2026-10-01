@@ -8,7 +8,6 @@ import SettingsModal from "../components/chat/SettingsModal";
 import SidebarPrimary from "../components/chat/SidebarPrimary";
 import { useGroupCallSocket } from "../hooks/useGroupCallSocket";
 import { useCallSocket } from "../hooks/useCallSocket";
-import type { CallType } from "../hooks/useCallSocket";
 import SidebarSecondary from "../components/chat/SidebarSecondary";
 import CreateGroupModal from "../components/chat/CreateGroupModal";
 import CreatePrivateChatModal from "../components/chat/CreatePrivateChatModal";
@@ -47,13 +46,12 @@ const ChatPage: React.FC = () => {
     const [prevActiveChat, setPrevActiveChat] = useState<string | null>(null);
     const [unreadMentions, setUnreadMentions] = useState<Set<string>>(new Set());
     const [pendingFriendCount, setPendingFriendCount] = useState(0);
-    // Call state
+    // trạng thái cuộc gọi
     const [groupCallModal, setGroupCallModal] = useState<{
         conversationId: string;
         conversationName: string;
-        callType: 'voice' | 'video';
-        incoming?: { callId: string; hostId: string; callType: 'voice' | 'video' };
-        outgoing?: { callType: 'voice' | 'video' };
+        incoming?: { callId: string; hostId: string };
+        outgoing?: boolean;
     } | null>(null);
 
     const [callModal, setCallModal] = useState<{
@@ -62,14 +60,12 @@ const ChatPage: React.FC = () => {
             calleeName: string;
             calleeAvatar?: string | null;
             conversationId: string;
-            callType: CallType;
         };
         incoming?: {
             callId: string;
             callerId: string;
             callerName: string;
             callerAvatar?: string | null;
-            callType: CallType;
             conversationId: string;
         };
     } | null>(null);
@@ -179,20 +175,19 @@ const ChatPage: React.FC = () => {
         }
     }, [isConnected, conversations, joinConversation]);
 
-    // Lắng nghe incoming GROUP call
+    // nhóm bắt đầu gọi
     useGroupCallSocket({
         onStarted: (payload) => {
-            // Nhận thông báo nhóm bắt đầu gọi — chỉ mở nếu chưa đang gọi
+            // chỉ mở nếu mình chưa đang trong cuộc gọi nào
+            if (payload.hostId === user?.sub) return;
             if (callModal === null && groupCallModal === null) {
                 const conv = conversations.find((c: any) => c._id === payload.conversationId);
                 setGroupCallModal({
                     conversationId: payload.conversationId,
                     conversationName: conv?.name ?? 'Cuộc gọi nhóm',
-                    callType: payload.callType,
                     incoming: {
                         callId: payload.callId,
                         hostId: payload.hostId,
-                        callType: payload.callType,
                     },
                 });
             }
@@ -205,7 +200,7 @@ const ChatPage: React.FC = () => {
         onIceCandidate: () => {},
     });
 
-    // Lắng nghe incoming call toàn cục — chỉ mở modal khi chưa có call
+    // có người gọi đến (chỉ mở khi mình chưa có cuộc gọi)
     useCallSocket({
         onIncoming: (payload) => {
             if (callModal === null) {
@@ -215,7 +210,6 @@ const ChatPage: React.FC = () => {
                         callerId: payload.callerId ?? '',
                         callerName: payload.callerInfo?.name ?? 'Người dùng',
                         callerAvatar: payload.callerInfo?.avatar ?? null,
-                        callType: payload.callType,
                         conversationId: payload.conversationId ?? '',
                     },
                 });
@@ -386,11 +380,11 @@ const ChatPage: React.FC = () => {
                     handleOpenInfo,
                     pendingGroupRequests,
                     reloadPendingTrigger,
-                    startCall: (params: { calleId: string; calleeName: string; calleeAvatar?: string | null; conversationId: string; callType: 'voice' | 'video' }) => {
+                    startCall: (params: { calleId: string; calleeName: string; calleeAvatar?: string | null; conversationId: string }) => {
                         setCallModal({ outgoing: params });
                     },
-                    startGroupCall: (params: { conversationId: string; conversationName: string; callType: 'voice' | 'video' }) => {
-                        setGroupCallModal({ ...params, outgoing: { callType: params.callType } });
+                    startGroupCall: (params: { conversationId: string; conversationName: string }) => {
+                        setGroupCallModal({ ...params, outgoing: true });
                     },
                     clearPendingGroupRequests: (cid: string) =>
                         setPendingGroupRequests(prev => {
@@ -434,8 +428,7 @@ const ChatPage: React.FC = () => {
             />
         )}
 
-        {/* 1-1 Call Modal — bọc Suspense vì CallModal được tải lazy, fallback
-            null vì modal chỉ xuất hiện trong chớp mắt lúc tải lần đầu */}
+        {/* cuộc gọi 1-1 */}
         {callModal !== null && (
             <Suspense fallback={null}>
                 <CallModal
@@ -446,7 +439,7 @@ const ChatPage: React.FC = () => {
             </Suspense>
         )}
 
-        {/* Group Call Modal */}
+        {/* cuộc gọi nhóm */}
         {groupCallModal !== null && (
             <Suspense fallback={null}>
                 <GroupCallModal

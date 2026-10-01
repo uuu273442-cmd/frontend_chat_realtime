@@ -84,17 +84,7 @@ export const conversationService = {
     return response.data;
   },
 
-  // Announcements & Pins
-  async createAnnouncement(id: string, content: string): Promise<any> {
-    const response = await api.post(`/conversations/${id}/announcement`, { content });
-    return response.data;
-  },
-
-  async getAnnouncements(id: string): Promise<any[]> {
-    const response = await api.get(`/conversations/${id}/announcements`);
-    return response.data;
-  },
-
+  // ghim
   async getPins(id: string): Promise<any[]> {
     const response = await api.get(`/conversations/${id}/pins`);
     return response.data;

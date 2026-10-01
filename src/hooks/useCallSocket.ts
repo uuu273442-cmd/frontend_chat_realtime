@@ -1,19 +1,16 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../context/SocketContext';
 
-export type CallType = 'voice' | 'video';
-
 export interface CallPayload {
   callId: string;
   callerId?: string;
   callerInfo?: { name: string; avatar?: string | null };
-  callType: CallType;
   conversationId?: string;
 }
 
 interface UseCallSocketOptions {
   onIncoming: (payload: CallPayload) => void;
-  onStarted: (payload: { callId: string; callType: CallType }) => void; // caller nhận callId
+  onStarted: (payload: { callId: string }) => void;
   onAccepted: (payload: { callId: string }) => void;
   onRejected: (payload: { callId: string; reasons?: string }) => void;
   onEnded: (payload: { callId: string }) => void;
@@ -29,8 +26,8 @@ export const useCallSocket = (options: UseCallSocketOptions) => {
   const optsRef = useRef(options);
   useEffect(() => { optsRef.current = options; });
 
-  const initiateCall = useCallback((calleId: string, conversationId: string, callType: CallType) => {
-    socket?.emit('call_initiate', { calleId, conversationId, callType });
+  const initiateCall = useCallback((calleId: string, conversationId: string) => {
+    socket?.emit('call_initiate', { calleId, conversationId });
   }, [socket]);
 
   const acceptCall = useCallback((callId: string) => {
